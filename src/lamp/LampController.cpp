@@ -17,17 +17,18 @@ void LampController::begin() {
 void LampController::update() {
     int rawValue = analogRead(LampConfig::ANALOG_PIN);
     
-    // Update timing strategy
-    updateTimings(rawValue);
+    switch(mode) {
+        case ControlMode::POTENTIOMETER:
+            handlePotentiometerMode(rawValue);
+            break;
+            
+        case ControlMode::REMOTE:
+            handleRemoteMode(rawValue);
+            break;
+    }
     
-    // Apply alpha filter
-    filteredValue = (LampConfig::ALPHA * rawValue) + 
-                    ((1 - LampConfig::ALPHA) * filteredValue);
-    
-    // Apply exponential mapping
+    // Apply exponential mapping and update PWM
     pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
-    
-    // Set PWM duty cycle
     ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
 }
 
@@ -55,4 +56,27 @@ void LampController::updateTimings(int rawValue) {
             inSlowMode = true;
         }
     }
+}
+
+void LampController::handlePotentiometerMode(int rawValue) {
+    updateTimings(rawValue);
+    filteredValue = (LampConfig::ALPHA * rawValue) + 
+                    ((1 - LampConfig::ALPHA) * filteredValue);
+}
+
+void LampController::handleRemoteMode(int rawValue) {
+    // Check if potentiometer has moved significantly
+    float percentChange = abs(rawValue - lastPotValue) / (float)LampConfig::MAX_ANALOG * 100.0f;
+    if (percentChange > 10.0f) {  // 10% threshold
+        mode = ControlMode::POTENTIOMETER;
+        lastPotValue = rawValue;
+    }
+}
+
+void LampController::setRemoteValue(float percentage) {
+    // Convert percentage (0-100) to filtered value range (0-MAX_ANALOG)
+    float targetValue = (percentage / 100.0f) * LampConfig::MAX_ANALOG;
+    filteredValue = targetValue;  // Set initial value
+    lastPotValue = analogRead(LampConfig::ANALOG_PIN);
+    mode = ControlMode::REMOTE;
 } 

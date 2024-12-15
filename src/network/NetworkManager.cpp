@@ -95,15 +95,14 @@ void NetworkManager::setupStation() {
 
     server.on("/api/control", HTTP_POST, [this]() {
         if (server.hasArg("brightness")) {
-            int brightness = server.arg("brightness").toInt();
-            // TODO: Add setBrightness method to LampController
-            // lamp->setBrightness(brightness);
+            float brightness = server.arg("brightness").toFloat();
+            lamp->setRemoteValue(brightness);
             server.send(200, "application/json", "{\"status\":\"success\"}");
         } else {
             server.send(400, "application/json", "{\"error\":\"missing parameters\"}");
         }
     });
-
+    
     server.begin();
 
     if (!setupMDNS()) {
@@ -119,7 +118,8 @@ void NetworkManager::handleStatus() {
 
 void NetworkManager::handleControl() {
     if (server.hasArg("brightness")) {
-        // TODO: Implement brightness control
+        float brightness = server.arg("brightness").toFloat();
+        lamp->setRemoteValue(brightness);  // Using our existing setRemoteValue method
         server.send(200, "text/plain", "OK");
     } else {
         server.send(400, "text/plain", "Missing parameters");
