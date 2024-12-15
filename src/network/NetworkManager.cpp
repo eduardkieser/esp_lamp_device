@@ -102,7 +102,7 @@ void NetworkManager::setupStation() {
             server.send(400, "application/json", "{\"error\":\"missing parameters\"}");
         }
     });
-    
+
     server.begin();
 
     if (!setupMDNS()) {
@@ -135,26 +135,99 @@ String NetworkManager::getControlHtml() {
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
                 body { font-family: Arial; margin: 20px; }
-                .slider { width: 100%; margin: 20px 0; }
+                .slider-container { 
+                    width: 100%; 
+                    margin: 20px 0;
+                    position: relative;
+                }
+                .slider { 
+                    width: 100%; 
+                    margin: 10px 0;
+                }
+                #value {
+                    text-align: center;
+                    font-size: 1.2em;
+                    margin: 10px 0;
+                }
+                .updating {
+                    opacity: 0.5;
+                    pointer-events: none;
+                }
+                #status {
+                    color: #666;
+                    font-size: 0.8em;
+                    text-align: center;
+                }
             </style>
         </head>
         <body>
             <h1>SmartLamp Control</h1>
-            <input type="range" min="0" max="100" class="slider" id="brightness">
+            <div class="slider-container">
+                <input type="range" min="0" max="100" class="slider" id="brightness">
+                <div id="value">0%</div>
+                <div id="status"></div>
+            </div>
             <script>
                 const slider = document.getElementById('brightness');
+                const valueDisplay = document.getElementById('value');
+                const status = document.getElementById('status');
+                let updatePending = false;
+                let lastKnownValue = 0;
+
+                function setUpdating(isUpdating) {
+                    updatePending = isUpdating;
+                    slider.parentElement.classList.toggle('updating', isUpdating);
+                    status.textContent = isUpdating ? 'Updating...' : '';
+                }
+
+                function updateValue(value, skipSlider = false) {
+                    if (!skipSlider) slider.value = value;
+                    valueDisplay.textContent = Math.round(value) + '%';
+                    lastKnownValue = value;
+                }
+
+                async function sendUpdate(value) {
+                    if (updatePending) return;
+                    setUpdating(true);
+                    
+                    try {
+                        const response = await fetch('/control?brightness=' + value);
+                        if (!response.ok) throw new Error('Update failed');
+                        updateValue(value);
+                    } catch (error) {
+                        console.error('Update failed:', error);
+                        updateValue(lastKnownValue);
+                        status.textContent = 'Update failed!';
+                    } finally {
+                        setUpdating(false);
+                    }
+                }
+
+                let updateTimeout;
                 slider.oninput = function() {
-                    fetch('/control?brightness=' + this.value);
+                    updateValue(this.value, true);
+                    clearTimeout(updateTimeout);
+                    updateTimeout = setTimeout(() => sendUpdate(this.value), 100);
                 }
                 
-                // Update slider periodically
-                setInterval(() => {
-                    fetch('/status')
-                        .then(r => r.json())
-                        .then(data => {
-                            slider.value = data.brightness;
-                        });
-                }, 1000);
+                async function pollStatus() {
+                    if (updatePending) return;
+                    
+                    try {
+                        const response = await fetch('/status');
+                        if (!response.ok) throw new Error('Status fetch failed');
+                        const data = await response.json();
+                        if (!updatePending) updateValue(data.brightness);
+                    } catch (error) {
+                        console.error('Status update failed:', error);
+                    }
+                }
+                
+                // Initial status fetch
+                pollStatus();
+                
+                // Poll less frequently
+                setInterval(pollStatus, 2000);
             </script>
         </body>
         </html>
