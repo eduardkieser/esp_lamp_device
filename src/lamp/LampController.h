@@ -9,6 +9,7 @@ public:
     bool isActive() const;
     int getSleepTime() const { return sleepTime; }
     bool canDeepSleep() const { return inSlowMode && !isActive(); }
+    float getCurrentValue() const { return filteredValue; }
 
 private:
     float filteredValue = 0;
