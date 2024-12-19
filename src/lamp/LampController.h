@@ -16,6 +16,7 @@ public:
     bool canDeepSleep() const { return inSlowMode && !isActive(); }
     float getCurrentValue() const { return filteredValue; }
     void setRemoteValue(float percentage);
+    float getBatteryVoltage() const { return batteryVoltage; }
 
 private:
     ControlMode mode = ControlMode::POTENTIOMETER;  // Default mode
@@ -32,4 +33,6 @@ private:
     void updateTimings(int rawValue);
     void handlePotentiometerMode(int rawValue);
     void handleRemoteMode(int rawValue);
+    float batteryVoltage = 0.0f;
+    void updateBatteryVoltage();
 }; 

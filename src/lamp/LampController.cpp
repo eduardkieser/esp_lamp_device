@@ -12,6 +12,9 @@ void LampController::begin() {
               LampConfig::PWM_FREQ, 
               LampConfig::PWM_RESOLUTION);
     ledcAttachPin(LampConfig::PWM_PIN, LampConfig::PWM_CHANNEL);
+    
+    // Configure voltage monitoring pin
+    analogSetPinAttenuation(LampConfig::VOLTAGE_PIN, ADC_11db);
 }
 
 void LampController::update() {
@@ -30,6 +33,16 @@ void LampController::update() {
     // Apply exponential mapping and update PWM
     pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
     ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
+
+    // Update battery voltage reading
+    updateBatteryVoltage();
+
+    // Consolidated debug print
+    Serial.printf("Input: %d, PWM: %.1f%%, Voltage: %.2fV\n", 
+        rawValue,
+        (pwmValue / LampConfig::MAX_PWM) * 100.0f,
+        batteryVoltage
+    );
 }
 
 bool LampController::isActive() const {
@@ -79,4 +92,21 @@ void LampController::setRemoteValue(float percentage) {
     filteredValue = targetValue;  // Set initial value
     lastPotValue = analogRead(LampConfig::ANALOG_PIN);
     mode = ControlMode::REMOTE;
+}
+
+void LampController::updateBatteryVoltage() {
+    int rawVoltage = analogRead(LampConfig::VOLTAGE_PIN);
+    
+    // Convert ADC reading to voltage
+    float pinVoltage = (rawVoltage * LampConfig::VOLTAGE_REFERENCE) / LampConfig::MAX_ANALOG;
+    
+    // Calculate actual battery voltage using voltage divider formula
+    float newVoltage = pinVoltage * LampConfig::VOLTAGE_DIVIDER_RATIO;
+    
+    // Apply calibration correction
+    newVoltage = newVoltage * LampConfig::VOLTAGE_SCALE + LampConfig::VOLTAGE_OFFSET;
+    
+    // Apply alpha filter
+    batteryVoltage = (LampConfig::VOLTAGE_ALPHA * newVoltage) + 
+                     ((1 - LampConfig::VOLTAGE_ALPHA) * batteryVoltage);
 } 
