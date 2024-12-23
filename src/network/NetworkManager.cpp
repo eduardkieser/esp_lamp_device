@@ -65,14 +65,31 @@ bool NetworkManager::tryConnect(const char* ssid, const char* pass, int timeout)
 }
 
 void NetworkManager::setupStation() {
-    // Only API Endpoints
+    // Add CORS headers to all responses
+    server.enableCORS(true);  // If available in your ESP8266WebServer version
+    
+    // Or manually add CORS headers to each endpoint:
     server.on("/api/status", HTTP_GET, [this]() {
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.sendHeader("Access-Control-Allow-Methods", "GET");
+        server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+        
         float normalizedValue = (lamp->getCurrentValue() / LampConfig::MAX_ANALOG) * 100.0;
         String json = "{\"brightness\":" + String(normalizedValue, 1) + 
                      ",\"deviceName\":\"" + deviceName + "\"" +
                      ",\"batteryVoltage\":" + String(lamp->getBatteryVoltage(), 2) + "}";
         server.send(200, "application/json", json);
     });
+
+    // Add similar headers to other endpoints...
+
+    server.on("/api/test", HTTP_GET, [this]() {
+        server.send(200, "application/json", "{\"status\":\"success\"}");
+    });
+
+    // to chech this is working you can use curl on the command line:
+    // curl http://smartlamp.local/api/test
+
 
     server.on("/api/control", HTTP_POST, [this]() {
         if (server.hasArg("brightness")) {

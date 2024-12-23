@@ -18,6 +18,7 @@ void LampController::begin() {
 }
 
 void LampController::update() {
+    static int printCounter = 0;
     int rawValue = analogRead(LampConfig::ANALOG_PIN);
     
     switch(mode) {
@@ -30,19 +31,29 @@ void LampController::update() {
             break;
     }
     
-    // Apply exponential mapping and update PWM
     pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
     ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
 
-    // Update battery voltage reading
     updateBatteryVoltage();
 
-    // Consolidated debug print
-    Serial.printf("Input: %d, PWM: %.1f%%, Voltage: %.2fV\n", 
-        rawValue,
-        (pwmValue / LampConfig::MAX_PWM) * 100.0f,
-        batteryVoltage
-    );
+    // Print only every 10th cycle with consistent formatting
+    if (++printCounter >= 10) {
+        char pwmStr[6];
+        char voltStr[6];
+        
+        // Format PWM percentage to always show 4 chars (including decimal point)
+        snprintf(pwmStr, sizeof(pwmStr), "%04.1f", (pwmValue / LampConfig::MAX_PWM) * 100.0f);
+        // Format voltage to always show 4 chars (including decimal point)
+        snprintf(voltStr, sizeof(voltStr), "%04.2f", batteryVoltage);
+        
+        Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV\n", 
+            rawValue,
+            pwmStr,
+            voltStr
+        );
+        
+        printCounter = 0;
+    }
 }
 
 bool LampController::isActive() const {
