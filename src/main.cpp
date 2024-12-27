@@ -18,8 +18,10 @@ void wipeEEPROM() {
 
 void setup() {
     Serial.begin(115200);
+    delay(100);
+    Serial.println("ESP32-C3 Starting up..."); 
 
-    pinMode(LampConfig::BUILTIN_LED, OUTPUT);
+    pinMode(LampConfig::STATUS_LED, OUTPUT);
 
     if (WIPE_EEPROM) {
         wipeEEPROM();
@@ -33,9 +35,10 @@ void setup() {
 }
 
 void loop() {
+    Serial.println("Loop");
     // network.update();
     lamp.update();
-    lamp.checkTouchStatus();
+    // lamp.checkTouchStatus();
     
     delay(lamp.getSleepTime());
 }

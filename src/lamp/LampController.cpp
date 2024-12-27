@@ -19,7 +19,7 @@ void LampController::begin() {
 
 void LampController::update() {
     static int printCounter = 0;
-    int rawValue = analogRead(LampConfig::ANALOG_PIN);
+    int rawValue = analogRead(LampConfig::DIMMER_ANALOG_PIN);
     
     switch(mode) {
         case ControlMode::POTENTIOMETER:
@@ -49,15 +49,22 @@ void LampController::update() {
         // Format voltage to always show 4 chars (including decimal point)
         snprintf(voltStr, sizeof(voltStr), "%04.2f", batteryVoltage);
 
-        // reat the touch value
-        int touchValue = touchRead(T0);
-        Serial.printf("Input: %04d (%.1f%%), PWM: %s%%, Voltage: %sV, Touch: %d\n", 
+        #if SUPPORT_TOUCH
+        // Read the touch value only if touch is supported
+        int touchValue = touchRead(LampConfig::TOUCH_PIN);
+        Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV, Touch: %d\n", 
                 rawValue,
-                (float)rawValue / LampConfig::MAX_ANALOG * 100.0f,
                 pwmStr,
                 voltStr,
                 touchValue
         );
+        #else
+        Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV\n", 
+                rawValue,
+                pwmStr,
+                voltStr
+        );
+        #endif
         
         printCounter = 0;
     }
@@ -108,7 +115,7 @@ void LampController::setRemoteValue(float percentage) {
     // Convert percentage (0-100) to filtered value range (0-MAX_ANALOG)
     float targetValue = (percentage / 100.0f) * LampConfig::MAX_ANALOG;
     filteredValue = targetValue;  // Set initial value
-    lastPotValue = analogRead(LampConfig::ANALOG_PIN);
+    lastPotValue = analogRead(LampConfig::DIMMER_ANALOG_PIN);
     mode = ControlMode::REMOTE;
 }
 
@@ -130,17 +137,20 @@ void LampController::updateBatteryVoltage() {
 }
 
 void LampController::checkTouchStatus() {
-    int touchValue = touchRead(T0);
+    #if SUPPORT_TOUCH
+    int touchValue = touchRead(LampConfig::TOUCH_PIN);
     
     // Only trigger if lamp is off and touch is detected
     if (touchValue < LampConfig::TOUCH_THRESHOLD && !isActive()) {
         showBatteryStatus();
     }
+    #endif
 }
 
 void LampController::showBatteryStatus() {
+    #if SUPPORT_TOUCH
     int flashes = calculateRequiredFlashes();
-    digitalWrite(LampConfig::BUILTIN_LED, HIGH);  // Turn on LED
+    digitalWrite(LampConfig::STATUS_LED, HIGH);
 
     for (int flash = 0; flash < flashes; flash++) {
         // Ramp up
@@ -169,8 +179,9 @@ void LampController::showBatteryStatus() {
     }
 
     // Ensure LED and output are off when done
-    digitalWrite(LampConfig::BUILTIN_LED, LOW);
+    digitalWrite(LampConfig::STATUS_LED, LOW);
     ledcWrite(LampConfig::PWM_CHANNEL, 0);
+    #endif
 }
 
 int LampController::calculateRequiredFlashes() const {
