@@ -19,26 +19,23 @@ void wipeEEPROM() {
 void setup() {
     Serial.begin(115200);
 
+    pinMode(LampConfig::BUILTIN_LED, OUTPUT);
+
     if (WIPE_EEPROM) {
         wipeEEPROM();
     }
     
     // Start network manager first
-    network.begin();
+    // network.begin();
     
     // Then initialize lamp
     lamp.begin();
 }
 
 void loop() {
-    network.update();
+    // network.update();
     lamp.update();
+    lamp.checkTouchStatus();
     
-    // if(lamp.canDeepSleep()) {
-    //     // Only enter deep sleep if we're in slow mode and PWM is off
-    //     esp_sleep_enable_timer_wakeup(5000000);
-    //     esp_light_sleep_start();
-    // } else {
-        delay(lamp.getSleepTime());
-    // }
+    delay(lamp.getSleepTime());
 }

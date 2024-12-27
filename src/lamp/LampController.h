@@ -17,17 +17,18 @@ public:
     float getCurrentValue() const { return filteredValue; }
     void setRemoteValue(float percentage);
     float getBatteryVoltage() const { return batteryVoltage; }
+    void checkTouchStatus();
 
 private:
-    ControlMode mode = ControlMode::POTENTIOMETER;  // Default mode
+    ControlMode mode = ControlMode::POTENTIOMETER;
     float filteredValue = 0;
     float pwmValue = 0;
     int lastAnalogValue = 0;
-    int lastPotValue = 0;  // For mode switching detection
-    int sleepTime = 10;  // Start with fast updates
+    int lastPotValue = 0;
+    int sleepTime = 10;
     unsigned long lastChangeTime = 0;
     bool inSlowMode = false;
-    static const unsigned long SLOW_MODE_TIMEOUT = 5000; // 5 seconds without change
+    static const unsigned long SLOW_MODE_TIMEOUT = 5000;
     
     float mapExponential(int input, float exponent);
     void updateTimings(int rawValue);
@@ -35,4 +36,21 @@ private:
     void handleRemoteMode(int rawValue);
     float batteryVoltage = 0.0f;
     void updateBatteryVoltage();
+    void showBatteryStatus();
+    int calculateRequiredFlashes() const;
+
+    enum class BatteryIndicatorState {
+        IDLE,
+        RAMP_UP,
+        RAMP_DOWN,
+        PAUSE
+    };
+
+    BatteryIndicatorState indicatorState = BatteryIndicatorState::IDLE;
+    unsigned long animationStartTime = 0;
+    int currentFlash = 0;
+    int totalFlashes = 0;
+    float indicatorBrightness = 0.0f;
+    
+    void updateBatteryIndicator();
 }; 

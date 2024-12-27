@@ -31,8 +31,11 @@ void LampController::update() {
             break;
     }
     
-    pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
-    ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
+    // Only update PWM if we're not in battery indication mode
+    if (indicatorState == BatteryIndicatorState::IDLE) {
+        pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
+        ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
+    }
 
     updateBatteryVoltage();
 
@@ -45,11 +48,15 @@ void LampController::update() {
         snprintf(pwmStr, sizeof(pwmStr), "%04.1f", (pwmValue / LampConfig::MAX_PWM) * 100.0f);
         // Format voltage to always show 4 chars (including decimal point)
         snprintf(voltStr, sizeof(voltStr), "%04.2f", batteryVoltage);
-        
-        Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV\n", 
-            rawValue,
-            pwmStr,
-            voltStr
+
+        // reat the touch value
+        int touchValue = touchRead(T0);
+        Serial.printf("Input: %04d (%.1f%%), PWM: %s%%, Voltage: %sV, Touch: %d\n", 
+                rawValue,
+                (float)rawValue / LampConfig::MAX_ANALOG * 100.0f,
+                pwmStr,
+                voltStr,
+                touchValue
         );
         
         printCounter = 0;
@@ -120,4 +127,59 @@ void LampController::updateBatteryVoltage() {
     // Apply alpha filter
     batteryVoltage = (LampConfig::VOLTAGE_ALPHA * newVoltage) + 
                      ((1 - LampConfig::VOLTAGE_ALPHA) * batteryVoltage);
+}
+
+void LampController::checkTouchStatus() {
+    int touchValue = touchRead(T0);
+    
+    // Only trigger if lamp is off and touch is detected
+    if (touchValue < LampConfig::TOUCH_THRESHOLD && !isActive()) {
+        showBatteryStatus();
+    }
+}
+
+void LampController::showBatteryStatus() {
+    int flashes = calculateRequiredFlashes();
+    digitalWrite(LampConfig::BUILTIN_LED, HIGH);  // Turn on LED
+
+    for (int flash = 0; flash < flashes; flash++) {
+        // Ramp up
+        for (unsigned long elapsed = 0; elapsed < LampConfig::RAMP_DURATION_MS; elapsed += 5) {
+            float brightness = static_cast<float>(elapsed) / LampConfig::RAMP_DURATION_MS;
+            int analogEquivalent = brightness * LampConfig::MAX_ANALOG;
+            float pwm = mapExponential(analogEquivalent * LampConfig::FLASH_BRIGHTNESS, LampConfig::EXP_FACTOR) ;
+            ledcWrite(LampConfig::PWM_CHANNEL, static_cast<int>(pwm));
+            delay(5);
+        }
+
+        // Ramp down
+        for (unsigned long elapsed = 0; elapsed < LampConfig::RAMP_DURATION_MS; elapsed += 5) {
+            float brightness = 1.0f - (static_cast<float>(elapsed) / LampConfig::RAMP_DURATION_MS);
+            int analogEquivalent = brightness * LampConfig::MAX_ANALOG;
+            float pwm = mapExponential(analogEquivalent * LampConfig::FLASH_BRIGHTNESS, LampConfig::EXP_FACTOR) ;
+            ledcWrite(LampConfig::PWM_CHANNEL, static_cast<int>(pwm));
+            delay(5);
+        }
+
+        // Pause between flashes (if not the last flash)
+        if (flash < flashes - 1) {
+            ledcWrite(LampConfig::PWM_CHANNEL, 0);
+            delay(LampConfig::FLASH_PAUSE_MS);
+        }
+    }
+
+    // Ensure LED and output are off when done
+    digitalWrite(LampConfig::BUILTIN_LED, LOW);
+    ledcWrite(LampConfig::PWM_CHANNEL, 0);
+}
+
+int LampController::calculateRequiredFlashes() const {
+    float cellVoltage = batteryVoltage / 4.0f;  // 4-cell setup
+    
+    if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
+        return 1;
+    } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
+        return 2;
+    }
+    return 3;
 } 
