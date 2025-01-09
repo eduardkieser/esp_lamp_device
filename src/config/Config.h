@@ -21,13 +21,15 @@ struct LampConfig {
     static const int PWM_CHANNEL = 0;
     
     #if defined(BOARD_ESP32_C3)
-    static const int PWM_FREQ = 5000;      // Lower frequency for C3
-    static const int PWM_RESOLUTION = 10;   // Lower resolution for C3
-    static const int MAX_PWM = 1023;        // 2^10 - 1
+    // we know that 9765 and 12 bit works well ish. (very good resolution, but slightly audible)
+    // 19531 and 11 bit looks good enough and is very quiet.
+    static const int PWM_FREQ = 19531;      // Lower frequency for C3
+    static const int PWM_RESOLUTION = 11;   // Lower resolution for C3
+    static const int MAX_PWM = 2047;        // 2^11 - 1
     #else
     static const int PWM_FREQ = 10000;      // Original ESP32 frequency
-    static const int PWM_RESOLUTION = 12;   // Original ESP32 resolution
-    static const int MAX_PWM = 4095;        // 2^12 - 1
+    static const int PWM_RESOLUTION = 13;   // Original ESP32 resolution
+    static const int MAX_PWM = 8191;        // 2^13 - 1
     #endif
 
     static const int ADC_RESOLUTION = 10;
@@ -48,7 +50,7 @@ struct LampConfig {
 
     // Battery status thresholds (per cell)
     static constexpr float BATTERY_LOW_THRESHOLD = 3.4f;
-    static constexpr float BATTERY_MEDIUM_THRESHOLD = 4.0f;
+    static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.8f;
     
     // Animation configuration
     static constexpr int RAMP_DURATION_MS = 200;  // Duration for each ramp up/down

@@ -39,18 +39,16 @@ void LampController::update() {
 
     updateBatteryVoltage();
 
+    #if SERIAL_DEBUG
     // Print only every 10th cycle with consistent formatting
     if (++printCounter >= 10) {
         char pwmStr[6];
         char voltStr[6];
         
-        // Format PWM percentage to always show 4 chars (including decimal point)
         snprintf(pwmStr, sizeof(pwmStr), "%04.1f", (pwmValue / LampConfig::MAX_PWM) * 100.0f);
-        // Format voltage to always show 4 chars (including decimal point)
         snprintf(voltStr, sizeof(voltStr), "%04.2f", batteryVoltage);
 
         #if SUPPORT_TOUCH
-        // Read the touch value only if touch is supported
         int touchValue = touchRead(LampConfig::TOUCH_PIN);
         Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV, Touch: %d\n", 
                 rawValue,
@@ -68,6 +66,7 @@ void LampController::update() {
         
         printCounter = 0;
     }
+    #endif
 }
 
 bool LampController::isActive() const {
