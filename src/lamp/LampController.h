@@ -18,6 +18,7 @@ public:
     void setRemoteValue(float percentage);
     float getBatteryVoltage() const { return batteryVoltage; }
     void checkTouchStatus();
+    uint64_t getSerialNumber() const;
 
 private:
     ControlMode mode = ControlMode::POTENTIOMETER;
@@ -28,6 +29,7 @@ private:
     int sleepTime = 10;
     unsigned long lastChangeTime = 0;
     bool inSlowMode = false;
+    uint64_t esp_serial_number = 0;
     static const unsigned long SLOW_MODE_TIMEOUT = 5000;
     
     float mapExponential(int input, float exponent);

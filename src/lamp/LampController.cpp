@@ -15,6 +15,10 @@ void LampController::begin() {
     
     // Configure voltage monitoring pin
     analogSetPinAttenuation(LampConfig::VOLTAGE_PIN, ADC_11db);
+
+    // Get ESP32-C3 unique hardware ID (chip ID)
+    esp_serial_number = ESP.getEfuseMac();
+    
 }
 
 void LampController::update() {
@@ -192,4 +196,6 @@ int LampController::calculateRequiredFlashes() const {
         return 2;
     }
     return 3;
-} 
+}
+
+uint64_t LampController::getSerialNumber() const { return esp_serial_number; } 
