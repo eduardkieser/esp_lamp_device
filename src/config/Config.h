@@ -56,4 +56,13 @@ struct LampConfig {
     static constexpr int RAMP_DURATION_MS = 200;  // Duration for each ramp up/down
     static constexpr int FLASH_PAUSE_MS = 0.0;    // Pause between flashes
     static constexpr float FLASH_BRIGHTNESS = 0.25f;  // Duration of each flash
+
+    // Add to LampConfig struct
+    #ifndef DATA_LOGGING_ENABLED
+    #define DATA_LOGGING_ENABLED false
+    #endif
+
+    // Data logging configuration
+    static const bool LOGGING_ENABLED = DATA_LOGGING_ENABLED;
+    static const unsigned long LOGGING_INTERVAL_MS = 60000; // Log every minute
 }; 

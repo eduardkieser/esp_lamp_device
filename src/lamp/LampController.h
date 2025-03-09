@@ -19,6 +19,9 @@ public:
     float getBatteryVoltage() const { return batteryVoltage; }
     void checkTouchStatus();
     uint64_t getSerialNumber() const;
+#if DATA_LOGGING_ENABLED
+    String getMonitoringData() const;
+#endif
 
 private:
     ControlMode mode = ControlMode::POTENTIOMETER;
@@ -55,4 +58,8 @@ private:
     float indicatorBrightness = 0.0f;
     
     void updateBatteryIndicator();
+#if DATA_LOGGING_ENABLED
+    unsigned long lastLogTime = 0;
+    bool shouldLogData() const;
+#endif
 }; 

@@ -207,3 +207,39 @@ bool NetworkManager::setupMDNS() {
     this->deviceName = deviceName;
     return true;
 }
+
+#if DATA_LOGGING_ENABLED
+void NetworkManager::sendMonitoringData() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Cannot send monitoring data: WiFi not connected");
+        return;
+    }
+    
+    String data = lamp->getMonitoringData();
+    if (sendDataToServer(data)) {
+        Serial.println("Monitoring data sent successfully");
+    } else {
+        Serial.println("Failed to send monitoring data");
+    }
+}
+
+bool NetworkManager::sendDataToServer(const String& data) {
+    HTTPClient http;
+    http.begin(loggingServerUrl);
+    http.addHeader("Content-Type", "application/json");
+    
+    int httpResponseCode = http.POST(data);
+    
+    if (httpResponseCode > 0) {
+        Serial.printf("HTTP Response code: %d\n", httpResponseCode);
+        String response = http.getString();
+        Serial.println(response);
+        http.end();
+        return true;
+    } else {
+        Serial.printf("Error code: %d\n", httpResponseCode);
+        http.end();
+        return false;
+    }
+}
+#endif

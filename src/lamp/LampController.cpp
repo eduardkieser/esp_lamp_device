@@ -71,6 +71,14 @@ void LampController::update() {
         printCounter = 0;
     }
     #endif
+
+    #if DATA_LOGGING_ENABLED
+    if (shouldLogData()) {
+        lastLogTime = millis();
+        // Signal to NetworkManager that data is ready
+        // We'll implement this in Stage 3
+    }
+    #endif
 }
 
 bool LampController::isActive() const {
@@ -198,4 +206,21 @@ int LampController::calculateRequiredFlashes() const {
     return 3;
 }
 
-uint64_t LampController::getSerialNumber() const { return esp_serial_number; } 
+uint64_t LampController::getSerialNumber() const { return esp_serial_number; }
+
+#if DATA_LOGGING_ENABLED
+bool LampController::shouldLogData() const {
+    return millis() - lastLogTime >= LampConfig::LOGGING_INTERVAL_MS;
+}
+
+String LampController::getMonitoringData() const {
+    // Format: JSON with device ID, voltage, and potentiometer position
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), 
+             "{\"device_id\":\"%016llX\",\"voltage\":%.2f,\"position\":%.1f}", 
+             esp_serial_number,
+             batteryVoltage,
+             (filteredValue / LampConfig::MAX_ANALOG) * 100.0f);
+    return String(buffer);
+}
+#endif 

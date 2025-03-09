@@ -68,10 +68,25 @@ void setup() {
 }
 
 void loop() {
-    // Serial.println("Loop");
-    // network.update();
+    network.update();
     lamp.update();
-    // lamp.checkTouchStatus();
+    lamp.checkTouchStatus();
+    
+    #if DATA_LOGGING_ENABLED
+    static bool dataReadyForSending = false;
+    
+    // Check if it's time to log data
+    if (millis() - lastLogCheckTime >= LOG_CHECK_INTERVAL) {
+        lastLogCheckTime = millis();
+        dataReadyForSending = true;
+    }
+    
+    // Send data if ready and connected
+    if (dataReadyForSending && WiFi.status() == WL_CONNECTED) {
+        network.sendMonitoringData();
+        dataReadyForSending = false;
+    }
+    #endif
     
     delay(lamp.getSleepTime());
 }

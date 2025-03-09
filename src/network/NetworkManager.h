@@ -13,6 +13,9 @@ public:
     void begin();
     void update();
     bool isConfigured();
+    #if DATA_LOGGING_ENABLED
+    void sendMonitoringData();
+    #endif
     
 private:
     WebServer server{80};
@@ -36,4 +39,8 @@ private:
     bool loadConfig();
     void saveConfig(const char* ssid, const char* pass);
     bool tryConnect(const char* ssid, const char* pass, int timeout = 30);
+    #if DATA_LOGGING_ENABLED
+    const char* loggingServerUrl = "http://your-server-ip:5000/api/log";
+    bool sendDataToServer(const String& data);
+    #endif
 }; 
