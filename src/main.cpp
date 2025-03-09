@@ -68,25 +68,27 @@ void setup() {
 }
 
 void loop() {
-    network.update();
     lamp.update();
-    lamp.checkTouchStatus();
     
-    #if DATA_LOGGING_ENABLED
-    static bool dataReadyForSending = false;
+    #if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
+    // Support both features
+    network.update();  // Process web server requests
     
-    // Check if it's time to log data
-    if (millis() - lastLogCheckTime >= LOG_CHECK_INTERVAL) {
-        lastLogCheckTime = millis();
-        dataReadyForSending = true;
-    }
-    
-    // Send data if ready and connected
-    if (dataReadyForSending && WiFi.status() == WL_CONNECTED) {
+    // Handle data logging when needed
+    if (lamp.isDataReadyToSend()) {
         network.sendMonitoringData();
-        dataReadyForSending = false;
+    }
+    #elif REMOTE_CONTROL_ENABLED
+    // Only remote control
+    network.update();
+    #elif DATA_LOGGING_ENABLED
+    // Only data logging
+    if (lamp.isDataReadyToSend()) {
+        network.update();
+        network.sendMonitoringData();
     }
     #endif
     
+    lamp.checkTouchStatus();
     delay(lamp.getSleepTime());
 }

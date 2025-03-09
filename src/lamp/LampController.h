@@ -21,6 +21,8 @@ public:
     uint64_t getSerialNumber() const;
 #if DATA_LOGGING_ENABLED
     String getMonitoringData() const;
+    bool isDataReadyToSend() const { return dataReadyToSend; }
+    void clearDataReadyFlag() { dataReadyToSend = false; }
 #endif
 
 private:
@@ -60,6 +62,9 @@ private:
     void updateBatteryIndicator();
 #if DATA_LOGGING_ENABLED
     unsigned long lastLogTime = 0;
+    unsigned long lastReportTime = 0;
+    bool dataReadyToSend = false;
     bool shouldLogData() const;
+    bool shouldReportData() const;
 #endif
 }; 

@@ -64,5 +64,14 @@ struct LampConfig {
 
     // Data logging configuration
     static const bool LOGGING_ENABLED = DATA_LOGGING_ENABLED;
-    static const unsigned long LOGGING_INTERVAL_MS = 60000; // Log every minute
+    static const unsigned long LOGGING_INTERVAL_MS = 60000;  // Log data every minute
+    static const unsigned long REPORTING_INTERVAL_MS = 3600000;  // Send to server every hour
+    static const unsigned long WIFI_TIMEOUT_MS = 30000;  // WiFi connection timeout (30 seconds)
+
+    // Add alongside DATA_LOGGING_ENABLED
+    #ifndef REMOTE_CONTROL_ENABLED
+    #define REMOTE_CONTROL_ENABLED true
+    #endif
+
+    static const bool REMOTE_ENABLED = REMOTE_CONTROL_ENABLED;
 }; 

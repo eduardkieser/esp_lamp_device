@@ -4,7 +4,10 @@ NetworkManager::NetworkManager(LampController& lampCtrl) : lamp(&lampCtrl) {}
 
 void NetworkManager::begin() {
     EEPROM.begin(512);
+    loadConfig();
     
+    #if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
+    // Both features enabled - prioritize remote control
     if (loadConfig() && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
         inAPMode = false;
         setupStation();
@@ -12,6 +15,22 @@ void NetworkManager::begin() {
         inAPMode = true;
         setupAP();
     }
+    #elif REMOTE_CONTROL_ENABLED
+    // Only remote control enabled - normal operation
+    if (loadConfig() && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
+        inAPMode = false;
+        setupStation();
+    } else {
+        inAPMode = true;
+        setupAP();
+    }
+    #elif DATA_LOGGING_ENABLED
+    // Only data logging enabled - WiFi off by default
+    WiFi.mode(WIFI_OFF);
+    #else
+    // Basic mode - no network features
+    WiFi.mode(WIFI_OFF);
+    #endif
 }
 
 bool NetworkManager::loadConfig() {
@@ -209,17 +228,50 @@ bool NetworkManager::setupMDNS() {
 }
 
 #if DATA_LOGGING_ENABLED
+void NetworkManager::enableWiFi() {
+    Serial.println("Enabling WiFi for data transmission...");
+    WiFi.mode(WIFI_STA);
+    wifiStartTime = millis();
+    
+    if (wifiConfig.configured) {
+        WiFi.begin(wifiConfig.ssid, wifiConfig.password);
+    }
+}
+
+void NetworkManager::disableWiFi() {
+    Serial.println("Disabling WiFi to save power...");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
 void NetworkManager::sendMonitoringData() {
+    // If WiFi is not enabled yet, enable it
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Cannot send monitoring data: WiFi not connected");
+        // Check if we've been trying too long
+        if (wifiStartTime > 0 && millis() - wifiStartTime > LampConfig::WIFI_TIMEOUT_MS) {
+            Serial.println("WiFi connection timed out. Disabling WiFi.");
+            disableWiFi();
+            return;
+        }
+        
+        // If WiFi is off, turn it on
+        if (WiFi.getMode() == WIFI_OFF) {
+            enableWiFi();
+        }
+        
+        // Not connected yet, try again later
         return;
     }
     
+    // WiFi is connected, send data
     String data = lamp->getMonitoringData();
     if (sendDataToServer(data)) {
         Serial.println("Monitoring data sent successfully");
+        lamp->clearDataReadyFlag();
+        disableWiFi();  // Turn off WiFi after successful transmission
     } else {
         Serial.println("Failed to send monitoring data");
+        // Will try again next cycle
     }
 }
 
@@ -240,6 +292,25 @@ bool NetworkManager::sendDataToServer(const String& data) {
         Serial.printf("Error code: %d\n", httpResponseCode);
         http.end();
         return false;
+    }
+}
+#endif
+
+#if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
+bool NetworkManager::isWifiIdle() {
+    return (millis() - lastActivityTime > WIFI_IDLE_TIMEOUT);
+}
+
+void NetworkManager::handleWifiPowerSaving() {
+    // If we've been idle and WiFi is on, turn it off to save power
+    if (isWifiIdle() && WiFi.getMode() != WIFI_OFF) {
+        disableWiFi();
+    }
+    
+    // If we need to send data or handle a request, turn WiFi on
+    if ((lamp->isDataReadyToSend() || server.getClientDisconnected()) && WiFi.getMode() == WIFI_OFF) {
+        enableWiFi();
+        lastActivityTime = millis();
     }
 }
 #endif

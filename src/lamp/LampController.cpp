@@ -75,8 +75,12 @@ void LampController::update() {
     #if DATA_LOGGING_ENABLED
     if (shouldLogData()) {
         lastLogTime = millis();
-        // Signal to NetworkManager that data is ready
-        // We'll implement this in Stage 3
+        
+        // Check if it's also time to report data
+        if (shouldReportData()) {
+            lastReportTime = millis();
+            dataReadyToSend = true;
+        }
     }
     #endif
 }
@@ -211,6 +215,10 @@ uint64_t LampController::getSerialNumber() const { return esp_serial_number; }
 #if DATA_LOGGING_ENABLED
 bool LampController::shouldLogData() const {
     return millis() - lastLogTime >= LampConfig::LOGGING_INTERVAL_MS;
+}
+
+bool LampController::shouldReportData() const {
+    return millis() - lastReportTime >= LampConfig::REPORTING_INTERVAL_MS;
 }
 
 String LampController::getMonitoringData() const {
