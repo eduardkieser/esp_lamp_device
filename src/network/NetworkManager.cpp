@@ -4,11 +4,25 @@ NetworkManager::NetworkManager(LampController& lampCtrl) : lamp(&lampCtrl) {}
 
 void NetworkManager::begin() {
     EEPROM.begin(512);
+    
+    #if DEV_MODE
+    // In development mode, use hardcoded credentials
+    Serial.println("DEVELOPMENT MODE: Using hardcoded WiFi credentials");
+    Serial.printf("DEV SSID: %s\n", LampConfig::DEV_WIFI_SSID);
+    // Don't print the full password for security, just the first few chars
+    Serial.printf("DEV PASSWORD: %.*s***\n", 3, LampConfig::DEV_WIFI_PASSWORD);
+    strncpy(wifiConfig.ssid, LampConfig::DEV_WIFI_SSID, sizeof(wifiConfig.ssid));
+    strncpy(wifiConfig.password, LampConfig::DEV_WIFI_PASSWORD, sizeof(wifiConfig.password));
+    wifiConfig.configured = true;
+    #else
+    // Normal operation - load from EEPROM
+    Serial.println("NORMAL MODE: Loading WiFi config from EEPROM");
     loadConfig();
+    #endif
     
     #if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
     // Both features enabled - prioritize remote control
-    if (loadConfig() && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
+    if (wifiConfig.configured && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
         inAPMode = false;
         setupStation();
     } else {
@@ -17,7 +31,7 @@ void NetworkManager::begin() {
     }
     #elif REMOTE_CONTROL_ENABLED
     // Only remote control enabled - normal operation
-    if (loadConfig() && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
+    if (wifiConfig.configured && tryConnect(wifiConfig.ssid, wifiConfig.password)) {
         inAPMode = false;
         setupStation();
     } else {
@@ -228,57 +242,19 @@ bool NetworkManager::setupMDNS() {
 }
 
 #if DATA_LOGGING_ENABLED
-void NetworkManager::enableWiFi() {
-    Serial.println("Enabling WiFi for data transmission...");
-    WiFi.mode(WIFI_STA);
-    wifiStartTime = millis();
-    
-    if (wifiConfig.configured) {
-        WiFi.begin(wifiConfig.ssid, wifiConfig.password);
-    }
-}
-
-void NetworkManager::disableWiFi() {
-    Serial.println("Disabling WiFi to save power...");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-}
-
-void NetworkManager::sendMonitoringData() {
-    // If WiFi is not enabled yet, enable it
-    if (WiFi.status() != WL_CONNECTED) {
-        // Check if we've been trying too long
-        if (wifiStartTime > 0 && millis() - wifiStartTime > LampConfig::WIFI_TIMEOUT_MS) {
-            Serial.println("WiFi connection timed out. Disabling WiFi.");
-            disableWiFi();
-            return;
-        }
-        
-        // If WiFi is off, turn it on
-        if (WiFi.getMode() == WIFI_OFF) {
-            enableWiFi();
-        }
-        
-        // Not connected yet, try again later
-        return;
-    }
-    
-    // WiFi is connected, send data
-    String data = lamp->getMonitoringData();
-    if (sendDataToServer(data)) {
-        Serial.println("Monitoring data sent successfully");
-        lamp->clearDataReadyFlag();
-        disableWiFi();  // Turn off WiFi after successful transmission
-    } else {
-        Serial.println("Failed to send monitoring data");
-        // Will try again next cycle
-    }
+String NetworkManager::getLoggingServerUrl() const {
+    return "http://" + String(LampConfig::DEFAULT_LOGGING_SERVER_IP) + 
+           ":" + String(LampConfig::DEFAULT_LOGGING_SERVER_PORT) + "/api/log";
 }
 
 bool NetworkManager::sendDataToServer(const String& data) {
     HTTPClient http;
-    http.begin(loggingServerUrl);
+    String url = getLoggingServerUrl();
+    http.begin(url);
     http.addHeader("Content-Type", "application/json");
+    
+    Serial.print("Sending data to: ");
+    Serial.println(url);
     
     int httpResponseCode = http.POST(data);
     
@@ -294,9 +270,101 @@ bool NetworkManager::sendDataToServer(const String& data) {
         return false;
     }
 }
-#endif
 
-#if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
+void NetworkManager::enableWiFi() {
+    Serial.println("Enabling WiFi for data transmission...");
+    WiFi.mode(WIFI_STA);
+    wifiStartTime = millis();
+    
+    #if DEV_MODE
+    // In development mode, always use the hardcoded credentials
+    Serial.println("DEV MODE: Using hardcoded WiFi credentials");
+    Serial.printf("Connecting to %s...\n", LampConfig::DEV_WIFI_SSID);
+    WiFi.begin(LampConfig::DEV_WIFI_SSID, LampConfig::DEV_WIFI_PASSWORD);
+    #else
+    // Normal mode - use stored credentials
+    if (wifiConfig.configured) {
+        Serial.printf("Connecting to %s...\n", wifiConfig.ssid);
+        WiFi.begin(wifiConfig.ssid, wifiConfig.password);
+    }
+    #endif
+}
+
+void NetworkManager::disableWiFi() {
+    Serial.println("Disabling WiFi to save power...");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
+void NetworkManager::sendMonitoringData() {
+    unsigned long currentTime = millis();
+    
+    // If we've had connection failures, implement a backoff strategy
+    if (connectionFailures > 0 && 
+        currentTime - lastConnectionAttempt < (CONNECTION_RETRY_INTERVAL * connectionFailures)) {
+        // Still in backoff period, don't try again yet
+        return;
+    }
+    
+    // If WiFi is not connected
+    if (WiFi.status() != WL_CONNECTED) {
+        // If WiFi is off, turn it on and attempt to connect
+        if (WiFi.getMode() == WIFI_OFF) {
+            Serial.println("Enabling WiFi for data transmission...");
+            WiFi.mode(WIFI_STA);
+            
+            #if DEV_MODE
+            // In development mode, always use the hardcoded credentials
+            Serial.println("DEV MODE: Using hardcoded WiFi credentials");
+            Serial.printf("Connecting to %s...\n", LampConfig::DEV_WIFI_SSID);
+            WiFi.begin(LampConfig::DEV_WIFI_SSID, LampConfig::DEV_WIFI_PASSWORD);
+            lastConnectionAttempt = currentTime;
+            #else
+            // Normal mode - use stored credentials
+            if (wifiConfig.configured) {
+                Serial.printf("Connecting to %s...\n", wifiConfig.ssid);
+                WiFi.begin(wifiConfig.ssid, wifiConfig.password);
+                lastConnectionAttempt = currentTime;
+            } else {
+                Serial.println("WiFi not configured, cannot connect");
+                connectionFailures++;
+                return;
+            }
+            #endif
+        }
+        
+        // Check if we've been trying too long for this attempt
+        if (currentTime - lastConnectionAttempt > LampConfig::WIFI_TIMEOUT_MS) {
+            Serial.println("WiFi connection attempt timed out");
+            disableWiFi();
+            connectionFailures++; // Increment failure counter for backoff
+            Serial.printf("Connection failures: %d, will retry in %d seconds\n", 
+                         connectionFailures, 
+                         (CONNECTION_RETRY_INTERVAL * connectionFailures) / 1000);
+            return;
+        }
+        
+        // Still trying to connect
+        return;
+    }
+    
+    // WiFi is connected, reset failure counter
+    connectionFailures = 0;
+    
+    // Send the data
+    String data = lamp->getMonitoringData();
+    if (sendDataToServer(data)) {
+        Serial.println("Monitoring data sent successfully");
+        lamp->clearDataReadyFlag();
+        disableWiFi();  // Turn off WiFi after successful transmission
+    } else {
+        Serial.println("Failed to send monitoring data");
+        disableWiFi();  // Turn off WiFi even after failure to prevent battery drain
+        // Will try again after backoff
+        connectionFailures++;
+    }
+}
+
 bool NetworkManager::isWifiIdle() {
     return (millis() - lastActivityTime > WIFI_IDLE_TIMEOUT);
 }
@@ -307,8 +375,8 @@ void NetworkManager::handleWifiPowerSaving() {
         disableWiFi();
     }
     
-    // If we need to send data or handle a request, turn WiFi on
-    if ((lamp->isDataReadyToSend() || server.getClientDisconnected()) && WiFi.getMode() == WIFI_OFF) {
+    // If we need to send data, turn WiFi on
+    if (lamp->isDataReadyToSend() && WiFi.getMode() == WIFI_OFF) {
         enableWiFi();
         lastActivityTime = millis();
     }

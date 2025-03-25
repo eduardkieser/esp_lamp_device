@@ -38,15 +38,15 @@ struct LampConfig {
     static constexpr float EXP_FACTOR = 3.0f; // Exponential mapping factor
 
     // Battery voltage monitoring
-    static constexpr float R_UP = 100000.0f;    // 100kΩ
-    static constexpr float R_DOWN = 10000.0f;   // 10kΩ
+    static constexpr float R_UP = 10000.0f;    // 10kΩ
+    static constexpr float R_DOWN = 3000.0f;   // 3kΩ
     static constexpr float VOLTAGE_REFERENCE = 3.3f;  // ESP32 reference voltage
     static constexpr float VOLTAGE_DIVIDER_RATIO = (R_UP + R_DOWN) / R_DOWN;
     static constexpr float VOLTAGE_ALPHA = 0.1f;  // Voltage filter constant
     
-    // Voltage calibration parameters
-    static constexpr float VOLTAGE_SCALE =  0.9602f;  // Multiplicative correction
-    static constexpr float VOLTAGE_OFFSET = 1.3695f; // Additive correction
+    // Calibrated based on actual measurements
+    static constexpr float VOLTAGE_SCALE = 0.94339f;  // 1.1/1.3 ≈ 0.846
+    static constexpr float VOLTAGE_OFFSET = -1.51f;   // No offset needed if scale is correct
 
     // Battery status thresholds (per cell)
     static constexpr float BATTERY_LOW_THRESHOLD = 3.4f;
@@ -64,8 +64,9 @@ struct LampConfig {
 
     // Data logging configuration
     static const bool LOGGING_ENABLED = DATA_LOGGING_ENABLED;
-    static const unsigned long LOGGING_INTERVAL_MS = 60000;  // Log data every minute
-    static const unsigned long REPORTING_INTERVAL_MS = 3600000;  // Send to server every hour
+    static const unsigned long LOGGING_INTERVAL_MS = 1000;  // Log data every 10 seconds
+    // static const unsigned long REPORTING_INTERVAL_MS = 3600000;  // Send to server every hour
+    static const unsigned long REPORTING_INTERVAL_MS = 10000;  // Send to server every 10 seconds
     static const unsigned long WIFI_TIMEOUT_MS = 30000;  // WiFi connection timeout (30 seconds)
 
     // Add alongside DATA_LOGGING_ENABLED
@@ -74,4 +75,37 @@ struct LampConfig {
     #endif
 
     static const bool REMOTE_ENABLED = REMOTE_CONTROL_ENABLED;
-}; 
+
+    // Data server configuration
+    static constexpr const char* DEFAULT_LOGGING_SERVER_IP = "192.168.68.109";
+    static constexpr int DEFAULT_LOGGING_SERVER_PORT = 4999;
+
+    // Development mode configuration
+    #ifndef DEV_MODE
+    #define DEV_MODE false
+    #endif
+
+    // Development WiFi credentials (only used when DEV_MODE is true)
+    #if DEV_MODE
+    static constexpr const char* DEV_WIFI_SSID = "VirusFactory";  // Replace with your WiFi SSID
+    static constexpr const char* DEV_WIFI_PASSWORD = "Otto&Bobbi";  // Replace with your WiFi password
+    #endif
+
+    // Try a different pin if 9 doesn't work
+    static const int LOW_VOLTAGE_LED_PIN = 7;  // Alternative pin for low voltage warning LED
+
+    // Add these parameters for the low voltage warning
+    static constexpr float LOW_VOLTAGE_THRESHOLD = 10.2f;  // Voltage threshold in volts
+    static const unsigned long VOLTAGE_CHECK_INTERVAL_MS = 30000;  // Check voltage every 30 seconds
+    static const unsigned long LOW_VOLTAGE_LED_TIMEOUT_MS = 10000;  // LED stays on for 10 seconds
+};
+
+// Remove these lines from outside the struct
+// #ifndef DEV_MODE
+// #define DEV_MODE false
+// #endif
+
+// #if DEV_MODE
+// static constexpr const char* DEV_WIFI_SSID = "VirusFactory";
+// static constexpr const char* DEV_WIFI_PASSWORD = "YourPassword";
+// #endif 

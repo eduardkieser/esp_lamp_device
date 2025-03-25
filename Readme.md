@@ -7,17 +7,19 @@ This project creates an intelligent, battery-powered LED lamp with dimming capab
 ![Smart Lamp System](https://example.com/smart_lamp_image.jpg)
 
 ## Table of Contents
-
+ 
 - [System Architecture](#system-architecture)
 - [Hardware Components](#hardware-components)
 - [Software Structure](#software-structure)
 - [Features](#features)
+- [Operating Modes](#operating-modes)
 - [Battery Monitoring System](#battery-monitoring-system)
 - [Power Optimization](#power-optimization)
 - [Setup Instructions](#setup-instructions)
 - [Usage](#usage)
 - [API Reference](#api-reference)
 - [Development Guide](#development-guide)
+- [Troubleshooting](#troubleshooting)
 
 ## System Architecture
 
@@ -45,8 +47,6 @@ NM <-.WiFi.-> SERVER
 style ESP32 fill:#f9f,stroke:#333,stroke-width:2px
 style SERVER fill:#bbf,stroke:#333,stroke-width:2px
 ```
-
-
 
 ## Hardware Components
 
@@ -119,6 +119,7 @@ LampController -- NetworkManager : provides data >
 ### Local Control
 - Smooth logarithmic dimming via potentiometer
 - Battery status indication via LED flashes (when touch sensor is activated)
+- Low voltage warning LED when battery drops below threshold
 - Power-efficient operation with adaptive sleep intervals
 
 ### Remote Control
@@ -131,6 +132,46 @@ LampController -- NetworkManager : provides data >
 - Power-efficient data collection and transmission
 - Historical data visualization
 
+## Operating Modes
+
+The lamp can be configured to operate in various modes by setting feature flags:
+
+1. **Basic Mode** (both flags off)
+   - Local control only via potentiometer
+   - Maximum battery life
+   - No WiFi or network activity
+
+2. **Remote Control Mode** (`REMOTE_CONTROL_ENABLED=true`)
+   - Web interface for remote brightness control
+   - Standard battery life (WiFi always on)
+   - APIs for integration with home automation
+
+3. **Battery Monitoring Mode** (`DATA_LOGGING_ENABLED=true`)
+   - Logs battery voltage and usage
+   - Extended battery life (WiFi only on when sending data)
+   - Periodic data transmission to server
+
+4. **Full-Featured Mode** (both flags on)
+   - All features enabled
+   - Balanced battery life (WiFi power management)
+   - WiFi disabled after extended periods of inactivity
+
+### Development Mode
+
+For easier development and debugging, a development mode is available:
+
+- Set `DEV_MODE=true` in platformio.ini
+- Update the hardcoded WiFi credentials in Config.h:
+  ```cpp
+  static constexpr const char* DEV_WIFI_SSID = "YourSSID";
+  static constexpr const char* DEV_WIFI_PASSWORD = "YourPassword";
+  ```
+- This bypasses the captive portal setup, allowing immediate WiFi connection
+- Dedicated environments are available for each use case:
+  - `pio run -e local_control -t upload` (Basic Mode)
+  - `pio run -e smart_lamp -t upload` (Remote Control Mode)
+  - `pio run -e data_logging -t upload` (Battery Monitoring Mode)
+
 ## Battery Monitoring System
 
 The system implements a power-efficient approach to battery monitoring:
@@ -140,11 +181,14 @@ sequenceDiagram
 participant Lamp as LampController
 participant Net as NetworkManager
 participant Server as Data Server
+
 Note over Lamp: Every minute
 Lamp->>Lamp: Log battery voltage & potentiometer position
+
 Note over Lamp: Every hour
 Lamp->>Lamp: Set dataReadyToSend flag
 Lamp->>Net: Signal data is ready
+
 Net->>Net: Enable WiFi
 Net->>Net: Connect to network
 Net->>Server: POST /api/log with data
@@ -168,9 +212,9 @@ L2[Lamp 2] -->|HTTP POST| S
 L3[Lamp n] -->|HTTP POST| S
 S -->|Write| CSV[CSV Files]
 CSV --> VIZ[Visualization Tool]
+
 style S fill:#f96,stroke:#333,stroke-width:2px
 ```
-
 
 ## Power Optimization
 
@@ -210,18 +254,36 @@ The project implements several strategies to maximize battery life:
 4. Set your server IP address in `NetworkManager.h`
 5. Build and flash the firmware:
 
-```
-bash
+```bash
 # For ESP32 with debugging
 pio run -e esp32dev -t upload
+
 # For ESP32-C3 with power optimization
 pio run -e esp32c3 -t upload
+
 # For ESP32-C3 with debugging
 pio run -e esp32c3_debug -t upload
 ```
 
+#### Data Server Setup
 
+1. Install Python 3.6+ and required packages:
+```bash
+pip install flask pandas matplotlib
+```
 
+2. Create the data server file `data_server.py` (see project repository)
+3. Run the server:
+```bash
+python data_server.py
+```
+
+4. The server will run on the host machine's IP address (displayed when you start it)
+5. Make sure to update `DEFAULT_LOGGING_SERVER_IP` in Config.h with your computer's IP address
+
+#### Visualization Tool
+
+Create a visualization script `visualize_data.py` (see project repository) to plot the collected data.
 
 ## Usage
 
@@ -251,7 +313,10 @@ pio run -e esp32c3_debug -t upload
 
 1. Ensure the data server is running
 2. Run the visualization script:
-
+```bash
+python visualize_data.py
+```
+3. Select a device to view its data
 
 ## API Reference
 
@@ -290,10 +355,6 @@ smartlamp/
 └── platformio.ini # PlatformIO configuration
 ```
 
-
-
-
-
 ### Compilation Flags
 
 The project uses several build flags to customize behavior:
@@ -301,6 +362,7 @@ The project uses several build flags to customize behavior:
 - `SERIAL_DEBUG`: Enable/disable serial debugging
 - `SUPPORT_TOUCH`: Enable/disable touch sensor functionality
 - `DATA_LOGGING_ENABLED`: Enable/disable battery monitoring system
+- `REMOTE_CONTROL_ENABLED`: Enable/disable remote control features
 - `BOARD_ESP32_DEV`/`BOARD_ESP32_C3`: Target board selection
 
 ### Adding New Features
@@ -316,6 +378,24 @@ The project uses several build flags to customize behavior:
 - Consider using deep sleep for extended battery life
 - Adjust logging and reporting intervals based on battery capacity
 
+## Troubleshooting
+
+### Common Compilation Errors
+
+1. **Missing `uint64_t` type**
+   - Error: `'uint64_t' does not name a type`
+   - Solution: Add `#include <cstdint>` to the top of LampController.h
+
+2. **WiFi Connection Issues**
+   - Verify WiFi credentials are correct
+   - Check that the ESP32 is within range of your router
+   - Ensure your router supports 2.4GHz networks (ESP32 doesn't support 5GHz)
+
+3. **Data Server Connection Problems**
+   - Verify server IP address is set correctly in NetworkManager.h
+   - Ensure server is running and accessible from the ESP32's network
+   - Check firewall settings to allow connections on port 5000
+
 ---
 
 ## License
@@ -328,26 +408,39 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Flask development team
 - All contributors to this project
 
-### Operating Modes
+### Low Battery Warning System
 
-The lamp can be configured to operate in various modes by setting feature flags:
+The lamp implements a state machine to efficiently manage the low battery warning LED:
 
-1. **Basic Mode** (both flags off)
-   - Local control only via potentiometer
-   - Maximum battery life
-   - No WiFi or network activity
+```mermaid
+stateDiagram-v2
+    [*] --> LampOff
+    
+    LampOff --> LampTurningOn: PWM > 0.3%
+    LampTurningOn --> LampOn: Always
+    
+    LampOn --> LampOff: PWM < 0.1% for 10 cycles
+    
+    LampTurningOn --> CheckBattery: Transition
+    CheckBattery --> WarningOn: Voltage < Threshold
+    CheckBattery --> NoWarning: Voltage >= Threshold
+    
+    WarningOn --> NoWarning: After 5 seconds
+    NoWarning --> LampOn: Continue operation
+    
+    state CheckBattery {
+        [*] --> MeasureVoltage
+        MeasureVoltage --> CompareThreshold
+        CompareThreshold --> [*]
+    }
+```
 
-2. **Remote Control Mode** (`REMOTE_CONTROL_ENABLED=true`)
-   - Web interface for remote brightness control
-   - Standard battery life (WiFi always on)
-   - APIs for integration with home automation
+The system works as follows:
 
-3. **Battery Monitoring Mode** (`DATA_LOGGING_ENABLED=true`)
-   - Logs battery voltage and usage
-   - Extended battery life (WiFi only on when sending data)
-   - Periodic data transmission to server
+1. When the lamp has been off (PWM < 0.1%) for a sufficient period
+2. And then turns on (PWM > 0.3%)
+3. The system checks the battery voltage
+4. If below threshold, it activates the warning LED for 5 seconds
+5. The warning only shows when transitioning from off to on, preventing constant warnings
 
-4. **Full-Featured Mode** (both flags on)
-   - All features enabled
-   - Balanced battery life (WiFi power management)
-   - WiFi disabled after extended periods of inactivity
+This approach is power-efficient while ensuring users are promptly notified of low battery conditions when they begin using the lamp.

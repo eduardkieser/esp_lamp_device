@@ -1,5 +1,7 @@
 #pragma once
 #include "../config/Config.h"
+#include <cstdint>
+#include <Arduino.h>
 
 class LampController {
 public:
@@ -67,4 +69,25 @@ private:
     bool shouldLogData() const;
     bool shouldReportData() const;
 #endif
+
+    // Add these variables
+    unsigned long lastVoltageCheckTime = 0;
+    unsigned long lowVoltageLedStartTime = 0;
+    bool lowVoltageLedActive = false;
+    bool wasInactive = true;  // Track if lamp was previously inactive
+    
+    // Add this method
+    void checkLowVoltageWarning();
+
+    enum class LampState {
+        OFF,
+        TURNING_ON,
+        ON
+    };
+
+    LampState lampState = LampState::OFF;
+    int offCycleCount = 0;
+    static const int OFF_CYCLE_THRESHOLD = 10;  // Number of cycles to consider lamp "off"
+    static constexpr float ON_THRESHOLD = 0.003f;   // 0.3% threshold to consider lamp "on"
+    static constexpr float OFF_THRESHOLD = 0.001f;  // 0.1% threshold to consider lamp "off"
 }; 

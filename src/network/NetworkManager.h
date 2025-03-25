@@ -41,16 +41,17 @@ private:
     void saveConfig(const char* ssid, const char* pass);
     bool tryConnect(const char* ssid, const char* pass, int timeout = 30);
     #if DATA_LOGGING_ENABLED
-    const char* loggingServerUrl = "http://192.168.1.XXX:5000/api/log";  // Replace with your computer's IP
+    String getLoggingServerUrl() const;
     bool sendDataToServer(const String& data);
     void enableWiFi();
     void disableWiFi();
     unsigned long wifiStartTime = 0;
-    #endif
-    #if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
-    unsigned long lastActivityTime = 0;
-    static const unsigned long WIFI_IDLE_TIMEOUT = 1800000; // 30 minutes
     bool isWifiIdle();
     void handleWifiPowerSaving();
+    unsigned long lastActivityTime = 0;
+    static const unsigned long WIFI_IDLE_TIMEOUT = 1800000;
+    unsigned long lastConnectionAttempt = 0;
+    int connectionFailures = 0;
+    static const unsigned long CONNECTION_RETRY_INTERVAL = 60000; // 1 minute between retries
     #endif
 }; 

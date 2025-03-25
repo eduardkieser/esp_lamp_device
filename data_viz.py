@@ -4,6 +4,35 @@ import matplotlib.pyplot as plt
 import os
 import sys
 
+def load_device_data_as_df(device_id=None):
+    data_dir = 'lamp_data'
+    if not os.path.exists(data_dir):
+        print(f"Error: Data directory '{data_dir}' not found")
+        return
+    
+    if device_id is None:
+        devices = [f.split('.')[0] for f in os.listdir(data_dir) if f.endswith('.csv')]
+        if not devices:
+            print("No device data found")
+            return
+    
+        print("Available devices:")
+        for i, device in enumerate(devices):
+            print(f"{i+1}. {device}")
+        
+    for device in devices:
+        file_path = os.path.join(data_dir, f"{device}.csv")
+        if not os.path.exists(file_path):
+            print(f"Error: No data file found for device {device}")
+            return
+        
+        df = pd.read_csv(file_path)
+        # df['timestamp'] = pd.to_datetime(df['timestamp'])
+        return df
+        
+        
+
+
 def plot_device_data(device_id=None):
     data_dir = 'lamp_data'
     
