@@ -181,16 +181,23 @@ void LampController::checkTouchStatus() {
 }
 
 void LampController::turnOnLowVoltageLed() {
-    // configure the pin as output
+    // Configure pins as output
+    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, OUTPUT);
+    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, OUTPUT);
     
+    // Set the correct states to turn on the LED
     digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
     digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, HIGH);
 }
 
 void LampController::turnOffLowVoltageLed() {
-    // deactivate the led pins to save power
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, LOW);
+    // Properly turn off the LED by setting both pins LOW
+    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
+    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, LOW);
+    
+    // If you want to save power, you can set pins to INPUT mode
+    // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, INPUT);
+    // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, INPUT);
 }
 
 void LampController::showBatteryStatus() {
@@ -268,54 +275,33 @@ void LampController::checkLowVoltageWarning() {
     unsigned long currentTime = millis();
     float pwmPercentage = pwmValue / LampConfig::MAX_PWM;
     
-    // State machine for lamp state tracking
-    switch (lampState) {
-        case LampState::OFF:
-            // Check if lamp is turning on
-            if (pwmPercentage > ON_THRESHOLD) {
-                Serial.println("Lamp turning on from off state");
-                lampState = LampState::TURNING_ON;
-                
-                // Check battery immediately when turning on
-                updateBatteryVoltage();
-                
-                Serial.printf("Battery check on power-on: %.2fV (threshold: %.2fV)\n", 
-                             batteryVoltage, LampConfig::LOW_VOLTAGE_THRESHOLD);
-                
-                // If battery is low, turn on warning LED
-                if (batteryVoltage < LampConfig::LOW_VOLTAGE_THRESHOLD) {
-                    Serial.println("Low battery detected on power-on - activating warning");
-                    turnOnLowVoltageLed();
-                    lowVoltageLedActive = true;
-                    lowVoltageLedStartTime = currentTime;
-                }
-            }
-            break;
-            
-        case LampState::TURNING_ON:
-            // Transition to ON state after one cycle
-            lampState = LampState::ON;
-            offCycleCount = 0;
-            break;
-            
-        case LampState::ON:
-            // Check if lamp is turning off
-            if (pwmPercentage < OFF_THRESHOLD) {
-                offCycleCount++;
-                if (offCycleCount >= OFF_CYCLE_THRESHOLD) {
-                    Serial.println("Lamp has been off for threshold period");
-                    lampState = LampState::OFF;
-                    offCycleCount = 0;
-                }
-            } else {
-                // Reset counter if lamp is active
-                offCycleCount = 0;
-            }
-            break;
+    // Track current lamp state (on/off) based on PWM percentage
+    bool isCurrentlyOn = pwmPercentage > ON_THRESHOLD;
+    
+    // Detect the transition from off to on
+    if (isCurrentlyOn && !wasLampOn) {
+        Serial.println("Lamp transition detected: OFF → ON");
+        
+        // Check battery immediately when turning on
+        updateBatteryVoltage();
+        
+        Serial.printf("Battery check on power-on: %.2fV (threshold: %.2fV)\n", 
+                     batteryVoltage, LampConfig::LOW_VOLTAGE_THRESHOLD);
+        
+        // If battery is low, turn on warning LED
+        if (batteryVoltage < LampConfig::LOW_VOLTAGE_THRESHOLD) {
+            Serial.println("Low battery detected on power-on - activating warning");
+            turnOnLowVoltageLed();
+            lowVoltageLedActive = true;
+            lowVoltageLedStartTime = currentTime;
+        }
     }
     
+    // Update previous state for next cycle
+    wasLampOn = isCurrentlyOn;
+    
     // Handle LED timeout regardless of state
-    if (lowVoltageLedActive && currentTime - lowVoltageLedStartTime >= 5000) {  // 5 seconds
+    if (lowVoltageLedActive && currentTime - lowVoltageLedStartTime >= LampConfig::LOW_VOLTAGE_LED_TIMEOUT_MS) {
         Serial.println("Low voltage warning LED timeout - turning off");
         turnOffLowVoltageLed();
         lowVoltageLedActive = false;

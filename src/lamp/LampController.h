@@ -77,6 +77,7 @@ private:
     unsigned long lowVoltageLedStartTime = 0;
     bool lowVoltageLedActive = false;
     bool wasInactive = true;  // Track if lamp was previously inactive
+    bool wasLampOn = false;  // Track previous lamp state
     
     // Add this method
     void checkLowVoltageWarning();
