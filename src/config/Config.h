@@ -12,6 +12,8 @@ struct LampConfig {
     static const int VOLTAGE_PIN = BOARD_VOLTAGE_PIN;
     static const int PWM_PIN = BOARD_PWM_PIN;
     static const int STATUS_LED = BOARD_LED_PIN;
+    static const int LOW_VOLTAGE_LED_PIN_LOW = 7;
+    static const int LOW_VOLTAGE_LED_PIN_HIGH = 8;
     
     #if SUPPORT_TOUCH
     static const int TOUCH_PIN = BOARD_TOUCH_PIN;
@@ -90,9 +92,6 @@ struct LampConfig {
     static constexpr const char* DEV_WIFI_SSID = "VirusFactory";  // Replace with your WiFi SSID
     static constexpr const char* DEV_WIFI_PASSWORD = "Otto&Bobbi";  // Replace with your WiFi password
     #endif
-
-    // Try a different pin if 9 doesn't work
-    static const int LOW_VOLTAGE_LED_PIN = 7;  // Alternative pin for low voltage warning LED
 
     // Add these parameters for the low voltage warning
     static constexpr float LOW_VOLTAGE_THRESHOLD = 10.2f;  // Voltage threshold in volts
