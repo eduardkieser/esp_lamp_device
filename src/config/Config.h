@@ -13,7 +13,9 @@ struct LampConfig {
     static const int PWM_PIN = BOARD_PWM_PIN;
     static const int STATUS_LED = BOARD_LED_PIN;
     static const int LOW_VOLTAGE_LED_PIN_LOW = 7;
-    static const int LOW_VOLTAGE_LED_PIN_HIGH = 8;
+    static const int LOW_VOLTAGE_LED_PIN_HIGH = 9;
+
+    static const int ONBOARD_LED_PIN = 8;
     
     #if SUPPORT_TOUCH
     static const int TOUCH_PIN = BOARD_TOUCH_PIN;

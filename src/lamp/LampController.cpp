@@ -20,20 +20,32 @@ void LampController::begin() {
     Serial.printf("Configuring low voltage warning LED on pin %d\n", LampConfig::LOW_VOLTAGE_LED_PIN_LOW);
     Serial.printf("Configuring low voltage warning LED on pin %d\n", LampConfig::LOW_VOLTAGE_LED_PIN_HIGH);
     
+    // configure the low voltage LED pins as output
     pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, OUTPUT);
     pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, OUTPUT);
     
-    // Test the LED by turning it on briefly during startup
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, HIGH);
-    delay(1000);  // Keep it on for 1 second
+    // Make sure the low power LED is off
     digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
     digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, LOW);
-    Serial.println("Low voltage LED test complete");
+    
+    // Initialize voltage reading before any checks are performed
+    // Take multiple readings to stabilize the value
+    for (int i = 0; i < 10; i++) {
+        updateBatteryVoltage();
+        delay(10);
+    }
+    
+    Serial.printf("Initial battery voltage: %.2fV\n", batteryVoltage);
+    
+    // turn off the onboard led
+    pinMode(LampConfig::ONBOARD_LED_PIN, OUTPUT);
+    digitalWrite(LampConfig::ONBOARD_LED_PIN, HIGH);
 
     // Get ESP32-C3 unique hardware ID (chip ID)
     esp_serial_number = ESP.getEfuseMac();
     
+    // Initialize the last voltage check time
+    lastVoltageCheckTime = millis();
 }
 
 void LampController::update() {
@@ -280,17 +292,23 @@ void LampController::checkLowVoltageWarning() {
     
     // Detect the transition from off to on
     if (isCurrentlyOn && !wasLampOn) {
+        #if SERIAL_DEBUG
         Serial.println("Lamp transition detected: OFF → ON");
+        #endif
         
         // Check battery immediately when turning on
         updateBatteryVoltage();
         
+        #if SERIAL_DEBUG
         Serial.printf("Battery check on power-on: %.2fV (threshold: %.2fV)\n", 
                      batteryVoltage, LampConfig::LOW_VOLTAGE_THRESHOLD);
+        #endif
         
         // If battery is low, turn on warning LED
         if (batteryVoltage < LampConfig::LOW_VOLTAGE_THRESHOLD) {
+            #if SERIAL_DEBUG
             Serial.println("Low battery detected on power-on - activating warning");
+            #endif
             turnOnLowVoltageLed();
             lowVoltageLedActive = true;
             lowVoltageLedStartTime = currentTime;
@@ -302,7 +320,9 @@ void LampController::checkLowVoltageWarning() {
     
     // Handle LED timeout regardless of state
     if (lowVoltageLedActive && currentTime - lowVoltageLedStartTime >= LampConfig::LOW_VOLTAGE_LED_TIMEOUT_MS) {
+        #if SERIAL_DEBUG
         Serial.println("Low voltage warning LED timeout - turning off");
+        #endif
         turnOffLowVoltageLed();
         lowVoltageLedActive = false;
     }
@@ -311,6 +331,8 @@ void LampController::checkLowVoltageWarning() {
     if (currentTime - lastVoltageCheckTime >= LampConfig::VOLTAGE_CHECK_INTERVAL_MS) {
         lastVoltageCheckTime = currentTime;
         updateBatteryVoltage();
+        #if SERIAL_DEBUG
         Serial.printf("Periodic voltage check: %.2fV\n", batteryVoltage);
+        #endif
     }
 } 
