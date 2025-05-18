@@ -65,7 +65,7 @@ style SERVER fill:#bbf,stroke:#333,stroke-width:2px
 | Component | ESP32 Pin | ESP32-C3 Pin |
 |-----------|-----------|--------------|
 | Potentiometer | 34 | 0 |
-| Voltage Monitoring | 35 | 2 |
+| Voltage Monitoring | 35 | 1 |
 | PWM Output | 13 | 10 |
 | Status LED | 2 | 8 |
 | Touch Sensor | 0 | N/A |
