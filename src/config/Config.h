@@ -53,7 +53,7 @@ struct LampConfig {
     static constexpr float VOLTAGE_OFFSET = -1.51f;   // No offset needed if scale is correct
 
     // Battery status thresholds (per cell)
-    static constexpr float BATTERY_LOW_THRESHOLD = 3.4f;
+    static constexpr float BATTERY_LOW_THRESHOLD = 3.5f;
     static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.8f;
     
     // Animation configuration
@@ -96,7 +96,7 @@ struct LampConfig {
     #endif
 
     // Add these parameters for the low voltage warning
-    static constexpr float LOW_VOLTAGE_THRESHOLD = 10.2f;  // Voltage threshold in volts
+    static constexpr float LOW_VOLTAGE_THRESHOLD = 10.7f;  // Voltage threshold in volts
     static const unsigned long VOLTAGE_CHECK_INTERVAL_MS = 30000;  // Check voltage every 30 seconds
     static const unsigned long LOW_VOLTAGE_LED_TIMEOUT_MS = 5000;  // LED stays on for 5 seconds
 };

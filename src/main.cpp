@@ -24,21 +24,26 @@ void configurePowerSaving() {
     btStop();
     
     // Configure CPU frequency
-    // setCpuFrequencyMhz(80);  // Options: 160, 80, 40, 20, 10 MHz
+
+    // Setting the frequency down to 80 Mhz reduces the power consumption from 15.6 to about 13.8 mA
+    // Setting it to 40 takes it down to about 10.5 mA
+    // Setting it all the way down to 10 takes it down to about 9.5 ish, so we hit a wall...
+    // Seems like diminishing returns after that
+    setCpuFrequencyMhz(10);  // Options: 160, 80, 40, 20, 10 MHz
     
     // Disable ADC when not in use
     // adc_power_release();
     
     // Configure GPIO power settings
     // Set unused pins to INPUT_PULLDOWN to prevent floating
-    for (int i = 0; i < 40; i++) {
-        if (i != LampConfig::PWM_PIN && 
-            i != LampConfig::DIMMER_ANALOG_PIN && 
-            i != LampConfig::VOLTAGE_PIN && 
-            i != LampConfig::STATUS_LED) {
-            pinMode(i, INPUT_PULLDOWN);
-        }
-    }
+    // for (int i = 0; i < 40; i++) {
+    //     if (i != LampConfig::PWM_PIN && 
+    //         i != LampConfig::DIMMER_ANALOG_PIN && 
+    //         i != LampConfig::VOLTAGE_PIN && 
+    //         i != LampConfig::STATUS_LED) {
+    //         pinMode(i, INPUT_PULLDOWN);
+    //     }
+    // }
     
     #if SERIAL_DEBUG
     Serial.println("Power saving configuration applied:");
@@ -62,7 +67,7 @@ void setup() {
     }
     
     // Apply power saving configuration before other initializations
-    // configurePowerSaving();
+    configurePowerSaving();
     
     lamp.begin();
 }
