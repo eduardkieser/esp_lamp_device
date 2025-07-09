@@ -26,7 +26,14 @@ struct LampConfig {
     static const int TOUCH_THRESHOLD = 40;
     #endif
 
-    static const int PWM_CHANNEL = 0;
+    // PWM channels
+    static const int PWM_CHANNEL = 0;        // Main lamp PWM
+    static const int RGB_R_CHANNEL = 1;      // Red LED PWM
+    static const int RGB_G_CHANNEL = 2;      // Green LED PWM  
+    static const int RGB_B_CHANNEL = 3;      // Blue LED PWM
+    
+    // RGB LED brightness control (30% of full brightness)
+    static constexpr float RGB_BRIGHTNESS_SCALE = 0.20f;
     
     #if defined(BOARD_ESP32_C3)
     // we know that 9765 and 12 bit works well ish. (very good resolution, but slightly audible)
@@ -62,7 +69,7 @@ struct LampConfig {
     static constexpr int BATTERY_CELLS = 3;                   // 3-cell LiPo battery
     
     // Animation configuration
-    static constexpr int RAMP_DURATION_MS = 200;  // Duration for each ramp up/down
+    static constexpr int RAMP_DURATION_MS = 500;  // Duration for each ramp up/down
     static constexpr int FLASH_PAUSE_MS = 0.0;    // Pause between flashes
     static constexpr float FLASH_BRIGHTNESS = 0.25f;  // Duration of each flash
 

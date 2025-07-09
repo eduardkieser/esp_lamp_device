@@ -5,10 +5,15 @@
 LampController::LampController() {}
 
 void LampController::begin() {
-    // Initialize RGB status LED pins FIRST to prevent boot-up flash
-    pinMode(LampConfig::LED_R, OUTPUT);
-    pinMode(LampConfig::LED_G, OUTPUT);
-    pinMode(LampConfig::LED_B, OUTPUT);
+    // Initialize RGB status LED PWM channels FIRST to prevent boot-up flash
+    ledcSetup(LampConfig::RGB_R_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
+    ledcSetup(LampConfig::RGB_G_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
+    ledcSetup(LampConfig::RGB_B_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
+    
+    ledcAttachPin(LampConfig::LED_R, LampConfig::RGB_R_CHANNEL);
+    ledcAttachPin(LampConfig::LED_G, LampConfig::RGB_G_CHANNEL);
+    ledcAttachPin(LampConfig::LED_B, LampConfig::RGB_B_CHANNEL);
+    
     setStatusLedColor(false, false, false);  // Ensure all LEDs are off
     
     analogReadResolution(LampConfig::ADC_RESOLUTION);
@@ -68,13 +73,13 @@ void LampController::update() {
             break;
     }
     
-    // Update battery indicator animation if active
+    // Always update main PWM output (never block it)
+    pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
+    ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
+    
+    // Update battery indicator animation if active (runs in parallel)
     if (indicatorState != BatteryIndicatorState::IDLE) {
         updateBatteryIndicator();
-    } else {
-        // Normal PWM output
-        pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
-        ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
     }
 
     updateBatteryVoltage();
@@ -221,16 +226,17 @@ void LampController::turnOffLowVoltageLed() {
     // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, INPUT);
 }
 
-// Helper to set RGB LED color
+// Helper to set RGB LED color with PWM control
 void LampController::setStatusLedColor(bool red, bool green, bool blue) {
-    // Ensure pins are configured as outputs (defensive programming)
-    pinMode(LampConfig::LED_R, OUTPUT);
-    pinMode(LampConfig::LED_G, OUTPUT);
-    pinMode(LampConfig::LED_B, OUTPUT);
+    // Calculate PWM values with 30% brightness scaling
+    int redValue = red ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE) : 0;
+    int greenValue = green ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE) : 0;
+    int blueValue = blue ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE) : 0;
     
-    digitalWrite(LampConfig::LED_R, red ? HIGH : LOW);
-    digitalWrite(LampConfig::LED_G, green ? HIGH : LOW);
-    digitalWrite(LampConfig::LED_B, blue ? HIGH : LOW);
+    // Set PWM values for each channel
+    ledcWrite(LampConfig::RGB_R_CHANNEL, redValue);
+    ledcWrite(LampConfig::RGB_G_CHANNEL, greenValue);
+    ledcWrite(LampConfig::RGB_B_CHANNEL, blueValue);
 }
 
 void LampController::showBatteryStatus() {
@@ -241,28 +247,22 @@ void LampController::showBatteryStatus() {
     Serial.printf("Battery status check: %.2fV total, %.2fV per cell\n", batteryVoltage, cellVoltage);
     #endif
     
-    // Determine color based on voltage per cell
+    // Determine color based on voltage per cell and log the status
     if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
-        // Red LED - Low battery (< 3.3V per cell)
-        setStatusLedColor(true, false, false);
         #if SERIAL_DEBUG
         Serial.println("Battery status: LOW (Red LED)");
         #endif
     } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
-        // Yellow LED - Medium battery (< 3.5V per cell)
-        setStatusLedColor(true, true, false);
         #if SERIAL_DEBUG
         Serial.println("Battery status: MEDIUM (Yellow LED)");
         #endif
     } else {
-        // Green LED - Good battery (>= 3.5V per cell)
-        setStatusLedColor(false, true, false);
         #if SERIAL_DEBUG
         Serial.println("Battery status: GOOD (Green LED)");
         #endif
     }
     
-    // Start the battery indicator animation
+    // Start the battery indicator animation (color will be set in updateBatteryIndicator)
     indicatorState = BatteryIndicatorState::RAMP_UP;
     animationStartTime = millis();
     currentFlash = 0;
@@ -358,9 +358,9 @@ void LampController::updateBatteryIndicator() {
                 indicatorState = BatteryIndicatorState::RAMP_DOWN;
                 animationStartTime = currentTime;
             } else {
-                // Continue ramping up
+                // Continue ramping up with exponential curve
                 float progress = (float)elapsed / LampConfig::RAMP_DURATION_MS;
-                indicatorBrightness = progress;
+                indicatorBrightness = pow(progress, LampConfig::EXP_FACTOR);
             }
             break;
             
@@ -370,14 +370,39 @@ void LampController::updateBatteryIndicator() {
                 indicatorState = BatteryIndicatorState::IDLE;
                 setStatusLedColor(false, false, false);
             } else {
-                // Continue ramping down
+                // Continue ramping down with exponential curve
                 float progress = (float)elapsed / LampConfig::RAMP_DURATION_MS;
-                indicatorBrightness = 1.0f - progress;
+                indicatorBrightness = pow(1.0f - progress, LampConfig::EXP_FACTOR);
             }
             break;
             
         default:
             indicatorState = BatteryIndicatorState::IDLE;
             break;
+    }
+    
+    // Apply the calculated brightness to the RGB LEDs
+    if (indicatorState != BatteryIndicatorState::IDLE) {
+        // Get the current color state and apply brightness
+        float cellVoltage = batteryVoltage / LampConfig::BATTERY_CELLS;
+        bool red = false, green = false, blue = false;
+        
+        if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
+            red = true;  // Red LED
+        } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
+            red = true; green = true;  // Yellow LED
+        } else {
+            green = true;  // Green LED
+        }
+        
+        // Calculate PWM values with exponential brightness scaling
+        int redValue = red ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
+        int greenValue = green ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
+        int blueValue = blue ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
+        
+        // Set PWM values for each channel
+        ledcWrite(LampConfig::RGB_R_CHANNEL, redValue);
+        ledcWrite(LampConfig::RGB_G_CHANNEL, greenValue);
+        ledcWrite(LampConfig::RGB_B_CHANNEL, blueValue);
     }
 } 
