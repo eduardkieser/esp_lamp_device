@@ -11,8 +11,12 @@ struct LampConfig {
     static const int DIMMER_ANALOG_PIN = BOARD_DIMMER_ANALOG_PIN;
     static const int VOLTAGE_PIN = BOARD_VOLTAGE_PIN;
     static const int PWM_PIN = BOARD_PWM_PIN;
-    static const int STATUS_LED = BOARD_LED_PIN;
-    static const int LOW_VOLTAGE_LED_PIN_LOW = 7;
+    static const int LED_R = BOARD_LED_R_PIN;
+    static const int LED_G = BOARD_LED_G_PIN;
+    static const int LED_B = BOARD_LED_B_PIN;
+    // For backward compatibility
+    static const int STATUS_LED = LED_R;
+    static const int LOW_VOLTAGE_LED_PIN_LOW = 6;
     static const int LOW_VOLTAGE_LED_PIN_HIGH = 9;
 
     static const int ONBOARD_LED_PIN = 8;
@@ -49,12 +53,13 @@ struct LampConfig {
     static constexpr float VOLTAGE_ALPHA = 0.1f;  // Voltage filter constant
     
     // Calibrated based on actual measurements
-    static constexpr float VOLTAGE_SCALE = 0.94339f;  // 1.1/1.3 ≈ 0.846
-    static constexpr float VOLTAGE_OFFSET = -1.51f;   // No offset needed if scale is correct
+    static constexpr float VOLTAGE_SCALE = 1;  // 1.1/1.3 ≈ 0.846
+    static constexpr float VOLTAGE_OFFSET = 0;   // No offset needed if scale is correct
 
-    // Battery status thresholds (per cell)
-    static constexpr float BATTERY_LOW_THRESHOLD = 3.5f;
-    static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.8f;
+    // Battery status thresholds (per cell) - 3-cell LiPo
+    static constexpr float BATTERY_LOW_THRESHOLD = 3.3f;      // Red LED
+    static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.5f;   // Yellow LED
+    static constexpr int BATTERY_CELLS = 3;                   // 3-cell LiPo battery
     
     // Animation configuration
     static constexpr int RAMP_DURATION_MS = 200;  // Duration for each ramp up/down
@@ -96,7 +101,7 @@ struct LampConfig {
     #endif
 
     // Add these parameters for the low voltage warning
-    static constexpr float LOW_VOLTAGE_THRESHOLD = 10.7f;  // Voltage threshold in volts
+    static constexpr float LOW_VOLTAGE_THRESHOLD = 9.9f;  // Voltage threshold for 3-cell LiPo (3.3V * 3 cells)
     static const unsigned long VOLTAGE_CHECK_INTERVAL_MS = 30000;  // Check voltage every 30 seconds
     static const unsigned long LOW_VOLTAGE_LED_TIMEOUT_MS = 5000;  // LED stays on for 5 seconds
 };

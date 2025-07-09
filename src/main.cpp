@@ -60,7 +60,7 @@ void setup() {
     Serial.println("ESP32-C3 Starting up..."); 
     #endif
 
-    pinMode(LampConfig::STATUS_LED, OUTPUT);
+    // RGB LED initialization is now handled in LampController::begin()
 
     if (WIPE_EEPROM) {
         wipeEEPROM();

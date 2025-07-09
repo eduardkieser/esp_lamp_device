@@ -5,6 +5,12 @@
 LampController::LampController() {}
 
 void LampController::begin() {
+    // Initialize RGB status LED pins FIRST to prevent boot-up flash
+    pinMode(LampConfig::LED_R, OUTPUT);
+    pinMode(LampConfig::LED_G, OUTPUT);
+    pinMode(LampConfig::LED_B, OUTPUT);
+    setStatusLedColor(false, false, false);  // Ensure all LEDs are off
+    
     analogReadResolution(LampConfig::ADC_RESOLUTION);
     analogSetAttenuation(ADC_11db);
     
@@ -62,8 +68,11 @@ void LampController::update() {
             break;
     }
     
-    // Only update PWM if we're not in battery indication mode
-    if (indicatorState == BatteryIndicatorState::IDLE) {
+    // Update battery indicator animation if active
+    if (indicatorState != BatteryIndicatorState::IDLE) {
+        updateBatteryIndicator();
+    } else {
+        // Normal PWM output
         pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
         ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
     }
@@ -212,52 +221,64 @@ void LampController::turnOffLowVoltageLed() {
     // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, INPUT);
 }
 
+// Helper to set RGB LED color
+void LampController::setStatusLedColor(bool red, bool green, bool blue) {
+    // Ensure pins are configured as outputs (defensive programming)
+    pinMode(LampConfig::LED_R, OUTPUT);
+    pinMode(LampConfig::LED_G, OUTPUT);
+    pinMode(LampConfig::LED_B, OUTPUT);
+    
+    digitalWrite(LampConfig::LED_R, red ? HIGH : LOW);
+    digitalWrite(LampConfig::LED_G, green ? HIGH : LOW);
+    digitalWrite(LampConfig::LED_B, blue ? HIGH : LOW);
+}
+
 void LampController::showBatteryStatus() {
-    #if SUPPORT_TOUCH
-    int flashes = calculateRequiredFlashes();
-    digitalWrite(LampConfig::STATUS_LED, HIGH);
-
-    for (int flash = 0; flash < flashes; flash++) {
-        // Ramp up
-        for (unsigned long elapsed = 0; elapsed < LampConfig::RAMP_DURATION_MS; elapsed += 5) {
-            float brightness = static_cast<float>(elapsed) / LampConfig::RAMP_DURATION_MS;
-            int analogEquivalent = brightness * LampConfig::MAX_ANALOG;
-            float pwm = mapExponential(analogEquivalent * LampConfig::FLASH_BRIGHTNESS, LampConfig::EXP_FACTOR) ;
-            ledcWrite(LampConfig::PWM_CHANNEL, static_cast<int>(pwm));
-            delay(5);
-        }
-
-        // Ramp down
-        for (unsigned long elapsed = 0; elapsed < LampConfig::RAMP_DURATION_MS; elapsed += 5) {
-            float brightness = 1.0f - (static_cast<float>(elapsed) / LampConfig::RAMP_DURATION_MS);
-            int analogEquivalent = brightness * LampConfig::MAX_ANALOG;
-            float pwm = mapExponential(analogEquivalent * LampConfig::FLASH_BRIGHTNESS, LampConfig::EXP_FACTOR) ;
-            ledcWrite(LampConfig::PWM_CHANNEL, static_cast<int>(pwm));
-            delay(5);
-        }
-
-        // Pause between flashes (if not the last flash)
-        if (flash < flashes - 1) {
-            ledcWrite(LampConfig::PWM_CHANNEL, 0);
-            delay(LampConfig::FLASH_PAUSE_MS);
-        }
-    }
-
-    // Ensure LED and output are off when done
-    digitalWrite(LampConfig::STATUS_LED, LOW);
-    ledcWrite(LampConfig::PWM_CHANNEL, 0);
+    // Calculate voltage per cell for 3-cell LiPo
+    float cellVoltage = batteryVoltage / LampConfig::BATTERY_CELLS;
+    
+    #if SERIAL_DEBUG
+    Serial.printf("Battery status check: %.2fV total, %.2fV per cell\n", batteryVoltage, cellVoltage);
     #endif
+    
+    // Determine color based on voltage per cell
+    if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
+        // Red LED - Low battery (< 3.3V per cell)
+        setStatusLedColor(true, false, false);
+        #if SERIAL_DEBUG
+        Serial.println("Battery status: LOW (Red LED)");
+        #endif
+    } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
+        // Yellow LED - Medium battery (< 3.5V per cell)
+        setStatusLedColor(true, true, false);
+        #if SERIAL_DEBUG
+        Serial.println("Battery status: MEDIUM (Yellow LED)");
+        #endif
+    } else {
+        // Green LED - Good battery (>= 3.5V per cell)
+        setStatusLedColor(false, true, false);
+        #if SERIAL_DEBUG
+        Serial.println("Battery status: GOOD (Green LED)");
+        #endif
+    }
+    
+    // Start the battery indicator animation
+    indicatorState = BatteryIndicatorState::RAMP_UP;
+    animationStartTime = millis();
+    currentFlash = 0;
+    totalFlashes = 1;  // Single flash for battery status
+    indicatorBrightness = 0.0f;
 }
 
 int LampController::calculateRequiredFlashes() const {
-    float cellVoltage = batteryVoltage / 4.0f;  // 4-cell setup
+    float cellVoltage = batteryVoltage / LampConfig::BATTERY_CELLS;  // 3-cell LiPo
     
     if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
-        return 1;
+        return 1;  // Red - Low battery
     } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
-        return 2;
+        return 2;  // Yellow - Medium battery
     }
-    return 3;
+    return 3;  // Green - Good battery
 }
 
 uint64_t LampController::getSerialNumber() const { return esp_serial_number; }
@@ -304,28 +325,17 @@ void LampController::checkLowVoltageWarning() {
                      batteryVoltage, LampConfig::LOW_VOLTAGE_THRESHOLD);
         #endif
         
-        // If battery is low, turn on warning LED
-        if (batteryVoltage < LampConfig::LOW_VOLTAGE_THRESHOLD) {
-            #if SERIAL_DEBUG
-            Serial.println("Low battery detected on power-on - activating warning");
-            #endif
-            turnOnLowVoltageLed();
-            lowVoltageLedActive = true;
-            lowVoltageLedStartTime = currentTime;
-        }
+        // Show battery status when transitioning from off to on
+        #if SERIAL_DEBUG
+        Serial.println("Lamp transition detected: OFF → ON - showing battery status");
+        #endif
+        showBatteryStatus();
     }
     
     // Update previous state for next cycle
     wasLampOn = isCurrentlyOn;
     
-    // Handle LED timeout regardless of state
-    if (lowVoltageLedActive && currentTime - lowVoltageLedStartTime >= LampConfig::LOW_VOLTAGE_LED_TIMEOUT_MS) {
-        #if SERIAL_DEBUG
-        Serial.println("Low voltage warning LED timeout - turning off");
-        #endif
-        turnOffLowVoltageLed();
-        lowVoltageLedActive = false;
-    }
+
     
     // Periodic voltage check (less frequent to save power)
     if (currentTime - lastVoltageCheckTime >= LampConfig::VOLTAGE_CHECK_INTERVAL_MS) {
@@ -334,5 +344,40 @@ void LampController::checkLowVoltageWarning() {
         #if SERIAL_DEBUG
         Serial.printf("Periodic voltage check: %.2fV\n", batteryVoltage);
         #endif
+    }
+} 
+
+void LampController::updateBatteryIndicator() {
+    unsigned long currentTime = millis();
+    unsigned long elapsed = currentTime - animationStartTime;
+    
+    switch (indicatorState) {
+        case BatteryIndicatorState::RAMP_UP:
+            if (elapsed >= LampConfig::RAMP_DURATION_MS) {
+                // Ramp up complete, switch to ramp down
+                indicatorState = BatteryIndicatorState::RAMP_DOWN;
+                animationStartTime = currentTime;
+            } else {
+                // Continue ramping up
+                float progress = (float)elapsed / LampConfig::RAMP_DURATION_MS;
+                indicatorBrightness = progress;
+            }
+            break;
+            
+        case BatteryIndicatorState::RAMP_DOWN:
+            if (elapsed >= LampConfig::RAMP_DURATION_MS) {
+                // Animation complete, return to idle
+                indicatorState = BatteryIndicatorState::IDLE;
+                setStatusLedColor(false, false, false);
+            } else {
+                // Continue ramping down
+                float progress = (float)elapsed / LampConfig::RAMP_DURATION_MS;
+                indicatorBrightness = 1.0f - progress;
+            }
+            break;
+            
+        default:
+            indicatorState = BatteryIndicatorState::IDLE;
+            break;
     }
 } 

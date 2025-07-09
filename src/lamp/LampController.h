@@ -93,4 +93,6 @@ private:
     static const int OFF_CYCLE_THRESHOLD = 10;  // Number of cycles to consider lamp "off"
     static constexpr float ON_THRESHOLD = 0.003f;   // 0.3% threshold to consider lamp "on"
     static constexpr float OFF_THRESHOLD = 0.001f;  // 0.1% threshold to consider lamp "off"
+
+    void setStatusLedColor(bool red, bool green, bool blue);
 }; 
