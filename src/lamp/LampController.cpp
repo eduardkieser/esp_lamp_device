@@ -5,7 +5,15 @@
 LampController::LampController() {}
 
 void LampController::begin() {
-    // Initialize RGB status LED PWM channels FIRST to prevent boot-up flash
+    // Configure RGB LED pins as outputs and set them LOW BEFORE PWM setup
+    pinMode(LampConfig::LED_R, OUTPUT);
+    digitalWrite(LampConfig::LED_R, LOW);
+    pinMode(LampConfig::LED_G, OUTPUT);
+    pinMode(LampConfig::LED_B, OUTPUT);
+    digitalWrite(LampConfig::LED_G, LOW);
+    digitalWrite(LampConfig::LED_B, LOW);
+    
+    // Initialize RGB status LED PWM channels
     ledcSetup(LampConfig::RGB_R_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
     ledcSetup(LampConfig::RGB_G_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
     ledcSetup(LampConfig::RGB_B_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
