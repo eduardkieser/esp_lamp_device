@@ -16,8 +16,6 @@ struct LampConfig {
     static const int LED_B = BOARD_LED_B_PIN;
     // For backward compatibility
     static const int STATUS_LED = LED_R;
-    static const int LOW_VOLTAGE_LED_PIN_LOW = 6;
-    static const int LOW_VOLTAGE_LED_PIN_HIGH = 9;
 
     static const int ONBOARD_LED_PIN = 8;
     
@@ -64,8 +62,8 @@ struct LampConfig {
     static constexpr float VOLTAGE_OFFSET = 0;   // No offset needed if scale is correct
 
     // Battery status thresholds (per cell) - 3-cell LiPo
-    static constexpr float BATTERY_LOW_THRESHOLD = 3.3f;      // Red LED
-    static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.5f;   // Yellow LED
+    static constexpr float BATTERY_LOW_THRESHOLD = 3.4f;      // Red LED
+    static constexpr float BATTERY_MEDIUM_THRESHOLD = 3.8f;   // Yellow LED
     static constexpr int BATTERY_CELLS = 3;                   // 3-cell LiPo battery
     
     // Animation configuration

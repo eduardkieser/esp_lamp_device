@@ -7,9 +7,9 @@ LampController::LampController() {}
 void LampController::begin() {
     // Configure RGB LED pins as outputs and set them LOW BEFORE PWM setup
     pinMode(LampConfig::LED_R, OUTPUT);
-    digitalWrite(LampConfig::LED_R, LOW);
     pinMode(LampConfig::LED_G, OUTPUT);
     pinMode(LampConfig::LED_B, OUTPUT);
+    digitalWrite(LampConfig::LED_R, LOW);
     digitalWrite(LampConfig::LED_G, LOW);
     digitalWrite(LampConfig::LED_B, LOW);
     
@@ -17,6 +17,11 @@ void LampController::begin() {
     ledcSetup(LampConfig::RGB_R_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
     ledcSetup(LampConfig::RGB_G_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
     ledcSetup(LampConfig::RGB_B_CHANNEL, LampConfig::PWM_FREQ, LampConfig::PWM_RESOLUTION);
+    
+    // Set PWM duty cycle to 0 before attaching pins to prevent bootup flash
+    ledcWrite(LampConfig::RGB_R_CHANNEL, 0);
+    ledcWrite(LampConfig::RGB_G_CHANNEL, 0);
+    ledcWrite(LampConfig::RGB_B_CHANNEL, 0);
     
     ledcAttachPin(LampConfig::LED_R, LampConfig::RGB_R_CHANNEL);
     ledcAttachPin(LampConfig::LED_G, LampConfig::RGB_G_CHANNEL);
@@ -35,17 +40,6 @@ void LampController::begin() {
     // Configure voltage monitoring pin
     analogSetPinAttenuation(LampConfig::VOLTAGE_PIN, ADC_11db);
 
-    // Add debug output to verify pin configuration
-    Serial.printf("Configuring low voltage warning LED on pin %d\n", LampConfig::LOW_VOLTAGE_LED_PIN_LOW);
-    Serial.printf("Configuring low voltage warning LED on pin %d\n", LampConfig::LOW_VOLTAGE_LED_PIN_HIGH);
-    
-    // configure the low voltage LED pins as output
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, OUTPUT);
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, OUTPUT);
-    
-    // Make sure the low power LED is off
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, LOW);
     
     // Initialize voltage reading before any checks are performed
     // Take multiple readings to stabilize the value
@@ -82,7 +76,7 @@ void LampController::update() {
     }
     
     // Always update main PWM output (never block it)
-    pwmValue = mapExponential(filteredValue, LampConfig::EXP_FACTOR);
+    pwmValue = mapExponential(filteredValue+1, LampConfig::EXP_FACTOR);
     ledcWrite(LampConfig::PWM_CHANNEL, (int)pwmValue);
     
     // Update battery indicator animation if active (runs in parallel)
@@ -100,10 +94,13 @@ void LampController::update() {
     if (++printCounter >= 10) {
         char pwmStr[6];
         char voltStr[6];
-        
+        char rawPwmStr[6];
+        char filteredValueStr[6];
+
         snprintf(pwmStr, sizeof(pwmStr), "%04.1f", (pwmValue / LampConfig::MAX_PWM) * 100.0f);
         snprintf(voltStr, sizeof(voltStr), "%04.2f", batteryVoltage);
-
+        snprintf(rawPwmStr, sizeof(rawPwmStr), "%04d", (int)pwmValue);
+        snprintf(filteredValueStr, sizeof(filteredValueStr), "%04d", (int)filteredValue);
         #if SUPPORT_TOUCH
         int touchValue = touchRead(LampConfig::TOUCH_PIN);
         Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV, Touch: %d\n", 
@@ -113,9 +110,11 @@ void LampController::update() {
                 touchValue
         );
         #else
-        Serial.printf("Input: %04d, PWM: %s%%, Voltage: %sV\n", 
+        Serial.printf("Input: %04d, PWM: %s%%, Raw PWM: %s, Filtered: %s, Voltage: %sV\n", 
                 rawValue,
                 pwmStr,
+                rawPwmStr,
+                filteredValueStr,
                 voltStr
         );
         #endif
@@ -214,25 +213,6 @@ void LampController::checkTouchStatus() {
     #endif
 }
 
-void LampController::turnOnLowVoltageLed() {
-    // Configure pins as output
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, OUTPUT);
-    pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, OUTPUT);
-    
-    // Set the correct states to turn on the LED
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, HIGH);
-}
-
-void LampController::turnOffLowVoltageLed() {
-    // Properly turn off the LED by setting both pins LOW
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, LOW);
-    digitalWrite(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, LOW);
-    
-    // If you want to save power, you can set pins to INPUT mode
-    // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_LOW, INPUT);
-    // pinMode(LampConfig::LOW_VOLTAGE_LED_PIN_HIGH, INPUT);
-}
 
 // Helper to set RGB LED color with PWM control
 void LampController::setStatusLedColor(bool red, bool green, bool blue) {
@@ -250,25 +230,6 @@ void LampController::setStatusLedColor(bool red, bool green, bool blue) {
 void LampController::showBatteryStatus() {
     // Calculate voltage per cell for 3-cell LiPo
     float cellVoltage = batteryVoltage / LampConfig::BATTERY_CELLS;
-    
-    #if SERIAL_DEBUG
-    Serial.printf("Battery status check: %.2fV total, %.2fV per cell\n", batteryVoltage, cellVoltage);
-    #endif
-    
-    // Determine color based on voltage per cell and log the status
-    if (cellVoltage < LampConfig::BATTERY_LOW_THRESHOLD) {
-        #if SERIAL_DEBUG
-        Serial.println("Battery status: LOW (Red LED)");
-        #endif
-    } else if (cellVoltage < LampConfig::BATTERY_MEDIUM_THRESHOLD) {
-        #if SERIAL_DEBUG
-        Serial.println("Battery status: MEDIUM (Yellow LED)");
-        #endif
-    } else {
-        #if SERIAL_DEBUG
-        Serial.println("Battery status: GOOD (Green LED)");
-        #endif
-    }
     
     // Start the battery indicator animation (color will be set in updateBatteryIndicator)
     indicatorState = BatteryIndicatorState::RAMP_UP;
@@ -321,22 +282,10 @@ void LampController::checkLowVoltageWarning() {
     
     // Detect the transition from off to on
     if (isCurrentlyOn && !wasLampOn) {
-        #if SERIAL_DEBUG
-        Serial.println("Lamp transition detected: OFF → ON");
-        #endif
-        
+
         // Check battery immediately when turning on
         updateBatteryVoltage();
         
-        #if SERIAL_DEBUG
-        Serial.printf("Battery check on power-on: %.2fV (threshold: %.2fV)\n", 
-                     batteryVoltage, LampConfig::LOW_VOLTAGE_THRESHOLD);
-        #endif
-        
-        // Show battery status when transitioning from off to on
-        #if SERIAL_DEBUG
-        Serial.println("Lamp transition detected: OFF → ON - showing battery status");
-        #endif
         showBatteryStatus();
     }
     
@@ -349,9 +298,6 @@ void LampController::checkLowVoltageWarning() {
     if (currentTime - lastVoltageCheckTime >= LampConfig::VOLTAGE_CHECK_INTERVAL_MS) {
         lastVoltageCheckTime = currentTime;
         updateBatteryVoltage();
-        #if SERIAL_DEBUG
-        Serial.printf("Periodic voltage check: %.2fV\n", batteryVoltage);
-        #endif
     }
 } 
 
@@ -377,6 +323,7 @@ void LampController::updateBatteryIndicator() {
                 // Animation complete, return to idle
                 indicatorState = BatteryIndicatorState::IDLE;
                 setStatusLedColor(false, false, false);
+                return;  // Exit early to prevent overwriting the LED states
             } else {
                 // Continue ramping down with exponential curve
                 float progress = (float)elapsed / LampConfig::RAMP_DURATION_MS;
@@ -407,6 +354,8 @@ void LampController::updateBatteryIndicator() {
         int redValue = red ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
         int greenValue = green ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
         int blueValue = blue ? (int)(LampConfig::MAX_PWM * LampConfig::RGB_BRIGHTNESS_SCALE * indicatorBrightness) : 0;
+
+        Serial.printf("Red: %d, Green: %d, Blue: %d\n", redValue, greenValue, blueValue);
         
         // Set PWM values for each channel
         ledcWrite(LampConfig::RGB_R_CHANNEL, redValue);

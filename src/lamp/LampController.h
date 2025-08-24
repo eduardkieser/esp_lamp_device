@@ -20,8 +20,6 @@ public:
     void setRemoteValue(float percentage);
     float getBatteryVoltage() const { return batteryVoltage; }
     void checkTouchStatus();
-    void turnOnLowVoltageLed();
-    void turnOffLowVoltageLed();
     uint64_t getSerialNumber() const;
 #if DATA_LOGGING_ENABLED
     String getMonitoringData() const;
