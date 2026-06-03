@@ -84,6 +84,15 @@ void LampController::update() {
         updateBatteryIndicator();
     }
 
+    // Show battery status once after boot cycles
+    if (!batteryStatusShown && bootCycleCount >= BOOT_CYCLES_BEFORE_BATTERY_STATUS) {
+        showBatteryStatus();
+        batteryStatusShown = true;
+    }
+    if (bootCycleCount < BOOT_CYCLES_BEFORE_BATTERY_STATUS) {
+        bootCycleCount++;
+    }
+
     updateBatteryVoltage();
 
     // Check low voltage warning
@@ -275,24 +284,6 @@ String LampController::getMonitoringData() const {
 
 void LampController::checkLowVoltageWarning() {
     unsigned long currentTime = millis();
-    float pwmPercentage = pwmValue / LampConfig::MAX_PWM;
-    
-    // Track current lamp state (on/off) based on PWM percentage
-    bool isCurrentlyOn = pwmPercentage > ON_THRESHOLD;
-    
-    // Detect the transition from off to on
-    if (isCurrentlyOn && !wasLampOn) {
-
-        // Check battery immediately when turning on
-        updateBatteryVoltage();
-        
-        showBatteryStatus();
-    }
-    
-    // Update previous state for next cycle
-    wasLampOn = isCurrentlyOn;
-    
-
     
     // Periodic voltage check (less frequent to save power)
     if (currentTime - lastVoltageCheckTime >= LampConfig::VOLTAGE_CHECK_INTERVAL_MS) {
