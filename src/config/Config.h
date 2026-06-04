@@ -90,6 +90,22 @@ struct LampConfig {
 
     static const bool REMOTE_ENABLED = REMOTE_CONTROL_ENABLED;
 
+    #ifndef QC_CONTROL_ENABLED
+    #define QC_CONTROL_ENABLED false
+    #endif
+
+    #ifndef QC_DEBUG_BOOT_LED
+    #define QC_DEBUG_BOOT_LED false
+    #endif
+
+    #ifndef QC_FIRMWARE_LABEL
+    #define QC_FIRMWARE_LABEL "prod"
+    #endif
+
+    static const bool QC_CONTROL = QC_CONTROL_ENABLED;
+    static const bool QC_BOOT_LED = QC_DEBUG_BOOT_LED;
+    static constexpr const char* FIRMWARE_LABEL = QC_FIRMWARE_LABEL;
+
     // Data server configuration
     static constexpr const char* DEFAULT_LOGGING_SERVER_IP = "192.168.68.109";
     static constexpr int DEFAULT_LOGGING_SERVER_PORT = 4999;

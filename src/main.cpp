@@ -1,10 +1,20 @@
 #include "lamp/LampController.h"
+#include <EEPROM.h>
+#include <WiFi.h>
+#if QC_CONTROL_ENABLED
+#include "qc/QcControlClient.h"
+#elif REMOTE_CONTROL_ENABLED || DATA_LOGGING_ENABLED
 #include "network/NetworkManager.h"
+#endif
 
 const bool WIPE_EEPROM = false;  // Set to true when you want to wipe EEPROM
 
 LampController lamp;
+#if QC_CONTROL_ENABLED
+QcControlClient qcControl(lamp);
+#elif REMOTE_CONTROL_ENABLED || DATA_LOGGING_ENABLED
 NetworkManager network(lamp);
+#endif
 
 void wipeEEPROM() {
     EEPROM.begin(512);
@@ -17,6 +27,16 @@ void wipeEEPROM() {
 }
 
 void configurePowerSaving() {
+    #if QC_CONTROL_ENABLED
+    WiFi.mode(WIFI_STA);
+    setCpuFrequencyMhz(80);
+    #if SERIAL_DEBUG
+    Serial.println("QC control mode: WiFi/BLE kept available for provisioning and WebSocket control");
+    Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
+    #endif
+    return;
+    #endif
+
     // Disable WiFi if not needed
     WiFi.mode(WIFI_OFF);
     
@@ -59,12 +79,20 @@ void setup() {
     configurePowerSaving();
     
     lamp.begin();
+
+    #if QC_CONTROL_ENABLED
+    qcControl.begin();
+    #elif REMOTE_CONTROL_ENABLED || DATA_LOGGING_ENABLED
+    network.begin();
+    #endif
 }
 
 void loop() {
     lamp.update();
     
-    #if REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
+    #if QC_CONTROL_ENABLED
+    qcControl.update();
+    #elif REMOTE_CONTROL_ENABLED && DATA_LOGGING_ENABLED
     // Support both features
     network.update();  // Process web server requests
     

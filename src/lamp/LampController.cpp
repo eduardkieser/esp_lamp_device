@@ -59,6 +59,10 @@ void LampController::begin() {
     
     // Initialize the last voltage check time
     lastVoltageCheckTime = millis();
+
+    #if QC_DEBUG_BOOT_LED
+    showDebugBootIndicator();
+    #endif
 }
 
 void LampController::update() {
@@ -234,6 +238,18 @@ void LampController::setStatusLedColor(bool red, bool green, bool blue) {
     ledcWrite(LampConfig::RGB_R_CHANNEL, redValue);
     ledcWrite(LampConfig::RGB_G_CHANNEL, greenValue);
     ledcWrite(LampConfig::RGB_B_CHANNEL, blueValue);
+}
+
+void LampController::showDebugBootIndicator() {
+    setStatusLedColor(true, false, false);
+    delay(250);
+    setStatusLedColor(false, true, false);
+    delay(250);
+    setStatusLedColor(false, false, true);
+    delay(250);
+    setStatusLedColor(true, true, true);
+    delay(250);
+    setStatusLedColor(false, false, false);
 }
 
 void LampController::showBatteryStatus() {

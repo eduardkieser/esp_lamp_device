@@ -21,6 +21,7 @@ public:
     float getBatteryVoltage() const { return batteryVoltage; }
     void checkTouchStatus();
     uint64_t getSerialNumber() const;
+    void showDebugBootIndicator();
 #if DATA_LOGGING_ENABLED
     String getMonitoringData() const;
     bool isDataReadyToSend() const { return dataReadyToSend; }
