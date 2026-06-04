@@ -44,6 +44,11 @@ private:
     enum class Status {
         UNPROVISIONED,
         WIFI_CONNECTING,
+        WIFI_NO_AP,
+        WIFI_AUTH_FAILED,
+        WIFI_HANDSHAKE,
+        WIFI_ASSOC_FAILED,
+        WIFI_TIMEOUT,
         WIFI_FAILED,
         WS_CONNECTING,
         WS_FAILED,
@@ -64,12 +69,15 @@ private:
     uint32_t commandSequence = 0;
     Status status = Status::UNPROVISIONED;
     bool statusLedOn = false;
+    uint8_t lastWifiDisconnectReason = 0;
 
     void startBleProvisioning();
     void publishProvisioningStatus(const char* status);
+    void handleWifiEvent(arduino_event_id_t event, arduino_event_info_t info);
     void setStatus(Status nextStatus);
     void updateStatusLed();
     void writeStatusLed(bool on);
+    Status statusForWifiFailure(wl_status_t wifiStatus) const;
     const char* statusName(Status value) const;
     const char* statusDescription(Status value) const;
     unsigned long statusBlinkInterval(Status value) const;

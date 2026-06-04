@@ -26,6 +26,9 @@ void QcControlClient::begin() {
     EEPROM.begin(EEPROM_SIZE);
     loadConfig();
     status = config.magic == CONFIG_MAGIC ? Status::WIFI_CONNECTING : Status::UNPROVISIONED;
+    WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
+        handleWifiEvent(event, info);
+    });
     startBleProvisioning();
     if (config.magic != CONFIG_MAGIC) {
         setStatus(Status::UNPROVISIONED);
@@ -42,10 +45,10 @@ void QcControlClient::update() {
 
     const wl_status_t wifiStatus = WiFi.status();
     if (wifiStatus != WL_CONNECTED) {
-        if (wifiStatus == WL_NO_SSID_AVAIL ||
-            wifiStatus == WL_CONNECT_FAILED ||
-            millis() - lastWifiAttempt >= WIFI_CONNECT_TIMEOUT_MS) {
-            setStatus(Status::WIFI_FAILED);
+        if (wifiStatus == WL_NO_SSID_AVAIL || wifiStatus == WL_CONNECT_FAILED) {
+            setStatus(statusForWifiFailure(wifiStatus));
+        } else if (millis() - lastWifiAttempt >= WIFI_CONNECT_TIMEOUT_MS) {
+            setStatus(Status::WIFI_TIMEOUT);
         }
         if (millis() - lastWifiAttempt >= WIFI_RETRY_MS) {
             connectWifi();
@@ -86,7 +89,7 @@ void QcControlClient::startBleProvisioning() {
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
     );
     txCharacteristic->addDescriptor(new BLE2902());
-    txCharacteristic->setValue("unprovisioned");
+    txCharacteristic->setValue(statusName(status));
 
     service->start();
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
@@ -116,12 +119,19 @@ void QcControlClient::publishProvisioningStatus(const char* status) {
         return;
     }
 
-    const String payload = "{\"status\":\"" + String(status) +
-        "\",\"description\":\"" + String(statusDescription(this->status)) +
-        "\",\"lampId\":\"" + lampId() +
-        "\",\"deviceId\":\"" + deviceId() + "\"}";
-    txCharacteristic->setValue(payload.c_str());
+    txCharacteristic->setValue(status);
     txCharacteristic->notify();
+}
+
+void QcControlClient::handleWifiEvent(arduino_event_id_t event, arduino_event_info_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+        lastWifiDisconnectReason = info.wifi_sta_disconnected.reason;
+        if (config.magic == CONFIG_MAGIC && status == Status::WIFI_CONNECTING) {
+            setStatus(statusForWifiFailure(WiFi.status()));
+        }
+    } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+        lastWifiDisconnectReason = 0;
+    }
 }
 
 void QcControlClient::setStatus(Status nextStatus) {
@@ -165,6 +175,11 @@ void QcControlClient::writeStatusLed(bool on) {
         case Status::WIFI_CONNECTING:
             lamp->setQcStatusLed(false, true, true);
             break;
+        case Status::WIFI_NO_AP:
+        case Status::WIFI_AUTH_FAILED:
+        case Status::WIFI_HANDSHAKE:
+        case Status::WIFI_ASSOC_FAILED:
+        case Status::WIFI_TIMEOUT:
         case Status::WIFI_FAILED:
             lamp->setQcStatusLed(true, false, false);
             break;
@@ -183,12 +198,43 @@ void QcControlClient::writeStatusLed(bool on) {
     }
 }
 
+QcControlClient::Status QcControlClient::statusForWifiFailure(wl_status_t wifiStatus) const {
+    if (wifiStatus == WL_NO_SSID_AVAIL ||
+        lastWifiDisconnectReason == WIFI_REASON_NO_AP_FOUND) {
+        return Status::WIFI_NO_AP;
+    }
+    if (lastWifiDisconnectReason == WIFI_REASON_AUTH_FAIL ||
+        lastWifiDisconnectReason == WIFI_REASON_AUTH_EXPIRE) {
+        return Status::WIFI_AUTH_FAILED;
+    }
+    if (lastWifiDisconnectReason == WIFI_REASON_HANDSHAKE_TIMEOUT) {
+        return Status::WIFI_HANDSHAKE;
+    }
+    if (lastWifiDisconnectReason == WIFI_REASON_ASSOC_FAIL) {
+        return Status::WIFI_ASSOC_FAILED;
+    }
+    if (wifiStatus == WL_CONNECT_FAILED) {
+        return Status::WIFI_FAILED;
+    }
+    return Status::WIFI_TIMEOUT;
+}
+
 const char* QcControlClient::statusName(Status value) const {
     switch (value) {
         case Status::UNPROVISIONED:
             return "unprovisioned";
         case Status::WIFI_CONNECTING:
             return "wifi_connecting";
+        case Status::WIFI_NO_AP:
+            return "wifi_no_ap";
+        case Status::WIFI_AUTH_FAILED:
+            return "wifi_auth_failed";
+        case Status::WIFI_HANDSHAKE:
+            return "wifi_handshake";
+        case Status::WIFI_ASSOC_FAILED:
+            return "wifi_assoc_failed";
+        case Status::WIFI_TIMEOUT:
+            return "wifi_timeout";
         case Status::WIFI_FAILED:
             return "wifi_failed";
         case Status::WS_CONNECTING:
@@ -209,6 +255,16 @@ const char* QcControlClient::statusDescription(Status value) const {
             return "Waiting for BLE provisioning";
         case Status::WIFI_CONNECTING:
             return "Provisioned; connecting to Wi-Fi";
+        case Status::WIFI_NO_AP:
+            return "Wi-Fi network was not found";
+        case Status::WIFI_AUTH_FAILED:
+            return "Wi-Fi authentication failed; check password";
+        case Status::WIFI_HANDSHAKE:
+            return "Wi-Fi handshake timed out; check password or signal";
+        case Status::WIFI_ASSOC_FAILED:
+            return "Wi-Fi association failed";
+        case Status::WIFI_TIMEOUT:
+            return "Wi-Fi connection timed out";
         case Status::WIFI_FAILED:
             return "Wi-Fi connection failed; check SSID and password";
         case Status::WS_CONNECTING:
@@ -235,6 +291,11 @@ unsigned long QcControlClient::statusBlinkInterval(Status value) const {
             return 500;
         case Status::WS_CONNECTING:
             return 500;
+        case Status::WIFI_NO_AP:
+        case Status::WIFI_AUTH_FAILED:
+        case Status::WIFI_HANDSHAKE:
+        case Status::WIFI_ASSOC_FAILED:
+        case Status::WIFI_TIMEOUT:
         case Status::WIFI_FAILED:
             return 1000;
         case Status::WS_FAILED:
