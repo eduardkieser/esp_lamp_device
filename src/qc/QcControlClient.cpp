@@ -26,6 +26,9 @@ void QcControlClient::begin() {
     EEPROM.begin(EEPROM_SIZE);
     loadConfig();
     startBleProvisioning();
+    if (config.magic != CONFIG_MAGIC) {
+        lamp->setQcStatusLed(false, false, true);
+    }
     connectWifi();
 }
 
@@ -88,11 +91,13 @@ void QcControlClient::startBleProvisioning() {
 void QcControlClient::handleProvisioningWrite(const std::string& value) {
     const String json(value.c_str());
     if (!parseProvisioningJson(json)) {
+        lamp->setQcStatusLed(true, false, false);
         publishProvisioningStatus("invalid_json");
         return;
     }
 
     saveConfig();
+    lamp->setQcStatusLed(false, true, true);
     publishProvisioningStatus("saved");
     closeWebSocket();
     WiFi.disconnect(true);
@@ -151,10 +156,12 @@ bool QcControlClient::parseProvisioningJson(const String& json) {
 
 void QcControlClient::connectWifi() {
     if (config.magic != CONFIG_MAGIC) {
+        lamp->setQcStatusLed(false, false, true);
         return;
     }
 
     lastWifiAttempt = millis();
+    lamp->setQcStatusLed(false, true, true);
     WiFi.mode(WIFI_STA);
     WiFi.begin(config.ssid, config.password);
 }
@@ -163,6 +170,7 @@ void QcControlClient::connectWebSocket() {
     lastWsAttempt = millis();
     if (!client.connect(config.controllerHost, config.controllerPort)) {
         wsConnected = false;
+        lamp->setQcStatusLed(false, true, true);
         return;
     }
 
@@ -187,9 +195,11 @@ void QcControlClient::connectWebSocket() {
             if (response.indexOf("\r\n\r\n") >= 0) {
                 wsConnected = response.indexOf("101") >= 0;
                 if (wsConnected) {
+                    lamp->setQcStatusLed(false, true, false);
                     sendHello();
                 } else {
                     client.stop();
+                    lamp->setQcStatusLed(false, true, true);
                 }
                 return;
             }
@@ -199,6 +209,7 @@ void QcControlClient::connectWebSocket() {
 
     client.stop();
     wsConnected = false;
+    lamp->setQcStatusLed(false, true, true);
 }
 
 void QcControlClient::closeWebSocket() {
@@ -206,6 +217,9 @@ void QcControlClient::closeWebSocket() {
         client.stop();
     }
     wsConnected = false;
+    if (config.magic == CONFIG_MAGIC) {
+        lamp->setQcStatusLed(false, true, true);
+    }
 }
 
 void QcControlClient::processWebSocket() {

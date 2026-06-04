@@ -22,6 +22,7 @@ public:
     void checkTouchStatus();
     uint64_t getSerialNumber() const;
     void showDebugBootIndicator();
+    void setQcStatusLed(bool red, bool green, bool blue);
 #if DATA_LOGGING_ENABLED
     String getMonitoringData() const;
     bool isDataReadyToSend() const { return dataReadyToSend; }

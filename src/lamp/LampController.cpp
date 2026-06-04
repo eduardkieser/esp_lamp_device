@@ -252,7 +252,22 @@ void LampController::showDebugBootIndicator() {
     setStatusLedColor(false, false, false);
 }
 
+void LampController::setQcStatusLed(bool red, bool green, bool blue) {
+    #if QC_CONTROL_ENABLED
+    indicatorState = BatteryIndicatorState::IDLE;
+    setStatusLedColor(red, green, blue);
+    #else
+    (void)red;
+    (void)green;
+    (void)blue;
+    #endif
+}
+
 void LampController::showBatteryStatus() {
+    #if QC_CONTROL_ENABLED
+    return;
+    #endif
+
     // Calculate voltage per cell for 3-cell LiPo
     float cellVoltage = batteryVoltage / LampConfig::BATTERY_CELLS;
     
