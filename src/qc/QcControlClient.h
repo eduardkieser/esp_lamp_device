@@ -36,9 +36,20 @@ private:
     static const uint32_t CONFIG_MAGIC = 0x51434C50; // QCLP
     static const int EEPROM_SIZE = 512;
     static const int CONFIG_OFFSET = 128;
-    static const unsigned long WIFI_RETRY_MS = 5000;
+    static const unsigned long WIFI_RETRY_MS = 15000;
+    static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000;
     static const unsigned long WS_RETRY_MS = 3000;
     static const unsigned long TELEMETRY_INTERVAL_MS = 5000;
+
+    enum class Status {
+        UNPROVISIONED,
+        WIFI_CONNECTING,
+        WIFI_FAILED,
+        WS_CONNECTING,
+        WS_FAILED,
+        CONNECTED,
+        INVALID_CONFIG
+    };
 
     LampController* lamp;
     QcProvisioningConfig config{};
@@ -49,10 +60,19 @@ private:
     unsigned long lastWifiAttempt = 0;
     unsigned long lastWsAttempt = 0;
     unsigned long lastTelemetryAt = 0;
+    unsigned long lastLedUpdate = 0;
     uint32_t commandSequence = 0;
+    Status status = Status::UNPROVISIONED;
+    bool statusLedOn = false;
 
     void startBleProvisioning();
     void publishProvisioningStatus(const char* status);
+    void setStatus(Status nextStatus);
+    void updateStatusLed();
+    void writeStatusLed(bool on);
+    const char* statusName(Status value) const;
+    const char* statusDescription(Status value) const;
+    unsigned long statusBlinkInterval(Status value) const;
     bool loadConfig();
     void saveConfig();
     bool parseProvisioningJson(const String& json);

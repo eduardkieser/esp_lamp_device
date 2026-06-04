@@ -25,19 +25,28 @@ QcControlClient::QcControlClient(LampController& lampCtrl) : lamp(&lampCtrl) {}
 void QcControlClient::begin() {
     EEPROM.begin(EEPROM_SIZE);
     loadConfig();
+    status = config.magic == CONFIG_MAGIC ? Status::WIFI_CONNECTING : Status::UNPROVISIONED;
     startBleProvisioning();
     if (config.magic != CONFIG_MAGIC) {
-        lamp->setQcStatusLed(false, false, true);
+        setStatus(Status::UNPROVISIONED);
     }
     connectWifi();
 }
 
 void QcControlClient::update() {
+    updateStatusLed();
+
     if (!config.magic) {
         return;
     }
 
-    if (WiFi.status() != WL_CONNECTED) {
+    const wl_status_t wifiStatus = WiFi.status();
+    if (wifiStatus != WL_CONNECTED) {
+        if (wifiStatus == WL_NO_SSID_AVAIL ||
+            wifiStatus == WL_CONNECT_FAILED ||
+            millis() - lastWifiAttempt >= WIFI_CONNECT_TIMEOUT_MS) {
+            setStatus(Status::WIFI_FAILED);
+        }
         if (millis() - lastWifiAttempt >= WIFI_RETRY_MS) {
             connectWifi();
         }
@@ -85,20 +94,18 @@ void QcControlClient::startBleProvisioning() {
     advertising->setScanResponse(true);
     advertising->start();
     bleStarted = true;
-    publishProvisioningStatus(config.magic == CONFIG_MAGIC ? "configured" : "unprovisioned");
+    publishProvisioningStatus(statusName(status));
 }
 
 void QcControlClient::handleProvisioningWrite(const std::string& value) {
     const String json(value.c_str());
     if (!parseProvisioningJson(json)) {
-        lamp->setQcStatusLed(true, false, false);
-        publishProvisioningStatus("invalid_json");
+        setStatus(Status::INVALID_CONFIG);
         return;
     }
 
     saveConfig();
-    lamp->setQcStatusLed(false, true, true);
-    publishProvisioningStatus("saved");
+    setStatus(Status::WIFI_CONNECTING);
     closeWebSocket();
     WiFi.disconnect(true);
     connectWifi();
@@ -110,10 +117,130 @@ void QcControlClient::publishProvisioningStatus(const char* status) {
     }
 
     const String payload = "{\"status\":\"" + String(status) +
+        "\",\"description\":\"" + String(statusDescription(this->status)) +
         "\",\"lampId\":\"" + lampId() +
         "\",\"deviceId\":\"" + deviceId() + "\"}";
     txCharacteristic->setValue(payload.c_str());
     txCharacteristic->notify();
+}
+
+void QcControlClient::setStatus(Status nextStatus) {
+    if (status == nextStatus) {
+        updateStatusLed();
+        return;
+    }
+
+    status = nextStatus;
+    statusLedOn = false;
+    lastLedUpdate = 0;
+    updateStatusLed();
+    publishProvisioningStatus(statusName(status));
+}
+
+void QcControlClient::updateStatusLed() {
+    const unsigned long interval = statusBlinkInterval(status);
+    if (interval == 0) {
+        writeStatusLed(true);
+        return;
+    }
+
+    const unsigned long now = millis();
+    if (lastLedUpdate == 0 || now - lastLedUpdate >= interval) {
+        statusLedOn = !statusLedOn;
+        lastLedUpdate = now;
+        writeStatusLed(statusLedOn);
+    }
+}
+
+void QcControlClient::writeStatusLed(bool on) {
+    if (!on) {
+        lamp->setQcStatusLed(false, false, false);
+        return;
+    }
+
+    switch (status) {
+        case Status::UNPROVISIONED:
+            lamp->setQcStatusLed(false, false, true);
+            break;
+        case Status::WIFI_CONNECTING:
+            lamp->setQcStatusLed(false, true, true);
+            break;
+        case Status::WIFI_FAILED:
+            lamp->setQcStatusLed(true, false, false);
+            break;
+        case Status::WS_CONNECTING:
+            lamp->setQcStatusLed(true, false, true);
+            break;
+        case Status::WS_FAILED:
+            lamp->setQcStatusLed(true, false, true);
+            break;
+        case Status::CONNECTED:
+            lamp->setQcStatusLed(false, true, false);
+            break;
+        case Status::INVALID_CONFIG:
+            lamp->setQcStatusLed(true, false, false);
+            break;
+    }
+}
+
+const char* QcControlClient::statusName(Status value) const {
+    switch (value) {
+        case Status::UNPROVISIONED:
+            return "unprovisioned";
+        case Status::WIFI_CONNECTING:
+            return "wifi_connecting";
+        case Status::WIFI_FAILED:
+            return "wifi_failed";
+        case Status::WS_CONNECTING:
+            return "ws_connecting";
+        case Status::WS_FAILED:
+            return "ws_failed";
+        case Status::CONNECTED:
+            return "connected";
+        case Status::INVALID_CONFIG:
+            return "invalid_config";
+    }
+    return "unknown";
+}
+
+const char* QcControlClient::statusDescription(Status value) const {
+    switch (value) {
+        case Status::UNPROVISIONED:
+            return "Waiting for BLE provisioning";
+        case Status::WIFI_CONNECTING:
+            return "Provisioned; connecting to Wi-Fi";
+        case Status::WIFI_FAILED:
+            return "Wi-Fi connection failed; check SSID and password";
+        case Status::WS_CONNECTING:
+            return "Wi-Fi connected; connecting to controller";
+        case Status::WS_FAILED:
+            return "Controller WebSocket connection failed";
+        case Status::CONNECTED:
+            return "Connected to controller";
+        case Status::INVALID_CONFIG:
+            return "Provisioning payload was invalid";
+    }
+    return "Unknown status";
+}
+
+unsigned long QcControlClient::statusBlinkInterval(Status value) const {
+    switch (value) {
+        case Status::CONNECTED:
+            return 0;
+        case Status::INVALID_CONFIG:
+            return 150;
+        case Status::WIFI_CONNECTING:
+            return 250;
+        case Status::UNPROVISIONED:
+            return 500;
+        case Status::WS_CONNECTING:
+            return 500;
+        case Status::WIFI_FAILED:
+            return 1000;
+        case Status::WS_FAILED:
+            return 1000;
+    }
+    return 500;
 }
 
 bool QcControlClient::loadConfig() {
@@ -156,21 +283,22 @@ bool QcControlClient::parseProvisioningJson(const String& json) {
 
 void QcControlClient::connectWifi() {
     if (config.magic != CONFIG_MAGIC) {
-        lamp->setQcStatusLed(false, false, true);
+        setStatus(Status::UNPROVISIONED);
         return;
     }
 
     lastWifiAttempt = millis();
-    lamp->setQcStatusLed(false, true, true);
+    setStatus(Status::WIFI_CONNECTING);
     WiFi.mode(WIFI_STA);
     WiFi.begin(config.ssid, config.password);
 }
 
 void QcControlClient::connectWebSocket() {
     lastWsAttempt = millis();
+    setStatus(Status::WS_CONNECTING);
     if (!client.connect(config.controllerHost, config.controllerPort)) {
         wsConnected = false;
-        lamp->setQcStatusLed(false, true, true);
+        setStatus(Status::WS_FAILED);
         return;
     }
 
@@ -195,11 +323,11 @@ void QcControlClient::connectWebSocket() {
             if (response.indexOf("\r\n\r\n") >= 0) {
                 wsConnected = response.indexOf("101") >= 0;
                 if (wsConnected) {
-                    lamp->setQcStatusLed(false, true, false);
+                    setStatus(Status::CONNECTED);
                     sendHello();
                 } else {
                     client.stop();
-                    lamp->setQcStatusLed(false, true, true);
+                    setStatus(Status::WS_FAILED);
                 }
                 return;
             }
@@ -209,7 +337,7 @@ void QcControlClient::connectWebSocket() {
 
     client.stop();
     wsConnected = false;
-    lamp->setQcStatusLed(false, true, true);
+    setStatus(Status::WS_FAILED);
 }
 
 void QcControlClient::closeWebSocket() {
@@ -217,8 +345,9 @@ void QcControlClient::closeWebSocket() {
         client.stop();
     }
     wsConnected = false;
-    if (config.magic == CONFIG_MAGIC) {
-        lamp->setQcStatusLed(false, true, true);
+    if (config.magic == CONFIG_MAGIC &&
+        (status == Status::CONNECTED || status == Status::WS_CONNECTING)) {
+        setStatus(Status::WS_FAILED);
     }
 }
 
