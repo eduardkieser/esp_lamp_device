@@ -8,6 +8,7 @@
 #include <EEPROM.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <esp_wifi.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -36,8 +37,8 @@ private:
     static const uint32_t CONFIG_MAGIC = 0x51434C50; // QCLP
     static const int EEPROM_SIZE = 512;
     static const int CONFIG_OFFSET = 128;
-    static const unsigned long WIFI_RETRY_MS = 15000;
-    static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000;
+    static const unsigned long WIFI_RETRY_MS = 30000;
+    static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 25000;
     static const unsigned long WS_RETRY_MS = 3000;
     static const unsigned long TELEMETRY_INTERVAL_MS = 5000;
 
@@ -53,6 +54,7 @@ private:
         WS_CONNECTING,
         WS_FAILED,
         CONNECTED,
+        CREDENTIALS_CLEARED,
         INVALID_CONFIG
     };
 
@@ -62,6 +64,8 @@ private:
     BLECharacteristic* txCharacteristic = nullptr;
     bool bleStarted = false;
     bool wsConnected = false;
+    bool wifiConnectRequested = false;
+    bool wifiHasIp = false;
     unsigned long lastWifiAttempt = 0;
     unsigned long lastWsAttempt = 0;
     unsigned long lastTelemetryAt = 0;
@@ -72,6 +76,7 @@ private:
     uint8_t lastWifiDisconnectReason = 0;
 
     void startBleProvisioning();
+    void stopBleProvisioning();
     void publishProvisioningStatus(const char* status);
     void handleWifiEvent(arduino_event_id_t event, arduino_event_info_t info);
     void setStatus(Status nextStatus);
@@ -83,6 +88,7 @@ private:
     unsigned long statusBlinkInterval(Status value) const;
     bool loadConfig();
     void saveConfig();
+    void clearConfig();
     bool parseProvisioningJson(const String& json);
     void connectWifi();
     void connectWebSocket();

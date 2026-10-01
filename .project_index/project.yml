@@ -1,0 +1,26 @@
+schema_version: 1
+id: esp-lamp-device
+name: ESP Lamp Device
+kind: firmware
+lifecycle: stable
+summary: Arduino firmware for ESP32-C3 lamps with local dimming, battery telemetry, optional networking, and production QC control.
+description: This is the established C++ firmware for the smart-lamp controller. It supports production-local control, remote-control and data-logging variants, calibrated battery monitoring, PWM dimming, Wi-Fi provisioning, and a QC build that connects to the phone-hosted Lamp QC controller. The newer Rust firmware now carries the active production direction, while this implementation remains the hardware-behavior reference.
+repository:
+  remote: git@github.com:eduardkieser/esp_lamp_device.git
+  branch: main
+  initialized_at: "2026-06-04T20:02:33+02:00"
+  last_activity_at: "2026-06-06T09:10:57+02:00"
+  activity_basis: git-and-files
+tags: [lamps, firmware, esp32, dimming, quality-control]
+stack:
+  - { name: C++, category: language }
+  - { name: Arduino, category: framework }
+  - { name: PlatformIO, category: tooling }
+  - { name: ESP32-C3, category: hardware }
+  - { name: WebSocket, category: service }
+hero:
+  path: images/hero-v2.webp
+  alt: A teal enclosed lamp controller connecting a dimmer dial, battery lead, and compact lamp emitter.
+  position: center
+links:
+  - { label: Repository, url: "https://github.com/eduardkieser/esp_lamp_device" }

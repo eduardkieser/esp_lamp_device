@@ -1,0 +1,9 @@
+schema_version: 1
+state: paused
+summary: The C++ firmware remains the behavior reference while current production and QC development has moved to the Rust implementation.
+updated_at: "2026-07-27T20:56:23+02:00"
+source: project-agent
+facts:
+  - { label: Primary target, value: ESP32-C3 lamp controller }
+  - { label: Production mode, value: Local PWM dimming and battery monitoring }
+  - { label: Current successor, value: Rust ESP Dimmer }

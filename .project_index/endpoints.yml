@@ -1,0 +1,13 @@
+schema_version: 1
+endpoints:
+  - id: lamp-controller
+    name: ESP32-C3 lamp controller
+    kind: device
+    server: { id: lamp-device, label: Physical lamp controller, ssh_alias: null }
+    runtime: { scheme: device, host: esp32-c3, port: null, binding: device }
+    exposure: none
+    url: null
+    health:
+      enabled: false
+      note: Physical firmware targets are not continuously online or addressable from the dashboard.
+    notes: Production builds are local-control only; QC and smart-lamp variants can enable Wi-Fi and controller connectivity.

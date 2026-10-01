@@ -18,6 +18,14 @@ public:
 private:
     QcControlClient* client;
 };
+
+class ProvisioningServerCallbacks : public BLEServerCallbacks {
+public:
+    void onDisconnect(BLEServer* server) override {
+        delay(50);
+        server->getAdvertising()->start();
+    }
+};
 }
 
 QcControlClient::QcControlClient(LampController& lampCtrl) : lamp(&lampCtrl) {}
@@ -33,7 +41,9 @@ void QcControlClient::begin() {
     if (config.magic != CONFIG_MAGIC) {
         setStatus(Status::UNPROVISIONED);
     }
-    connectWifi();
+    if (config.magic == CONFIG_MAGIC) {
+        wifiConnectRequested = true;
+    }
 }
 
 void QcControlClient::update() {
@@ -43,15 +53,22 @@ void QcControlClient::update() {
         return;
     }
 
+    if (wifiConnectRequested) {
+        connectWifi();
+        return;
+    }
+
     const wl_status_t wifiStatus = WiFi.status();
-    if (wifiStatus != WL_CONNECTED) {
+    if (!wifiHasIp) {
         if (wifiStatus == WL_NO_SSID_AVAIL || wifiStatus == WL_CONNECT_FAILED) {
             setStatus(statusForWifiFailure(wifiStatus));
+            startBleProvisioning();
         } else if (millis() - lastWifiAttempt >= WIFI_CONNECT_TIMEOUT_MS) {
             setStatus(Status::WIFI_TIMEOUT);
+            startBleProvisioning();
         }
         if (millis() - lastWifiAttempt >= WIFI_RETRY_MS) {
-            connectWifi();
+            wifiConnectRequested = true;
         }
         return;
     }
@@ -74,8 +91,11 @@ void QcControlClient::startBleProvisioning() {
         return;
     }
 
+    WiFi.setSleep(true);
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     BLEDevice::init(("LampQC-" + deviceId().substring(12)).c_str());
     BLEServer* server = BLEDevice::createServer();
+    server->setCallbacks(new ProvisioningServerCallbacks());
     BLEService* service = server->createService(SERVICE_UUID);
 
     BLECharacteristic* rx = service->createCharacteristic(
@@ -100,8 +120,30 @@ void QcControlClient::startBleProvisioning() {
     publishProvisioningStatus(statusName(status));
 }
 
+void QcControlClient::stopBleProvisioning() {
+    if (!bleStarted) {
+        return;
+    }
+
+    BLEDevice::stopAdvertising();
+    BLEDevice::deinit(false);
+    txCharacteristic = nullptr;
+    bleStarted = false;
+}
+
 void QcControlClient::handleProvisioningWrite(const std::string& value) {
     const String json(value.c_str());
+    if (readStringValue(json, "command") == "clear_credentials" ||
+        json.indexOf("\"clearCredentials\":true") >= 0 ||
+        json.indexOf("\"clearCredentials\": true") >= 0) {
+        clearConfig();
+        closeWebSocket();
+        WiFi.disconnect(false);
+        lastWifiDisconnectReason = 0;
+        setStatus(Status::CREDENTIALS_CLEARED);
+        return;
+    }
+
     if (!parseProvisioningJson(json)) {
         setStatus(Status::INVALID_CONFIG);
         return;
@@ -111,7 +153,7 @@ void QcControlClient::handleProvisioningWrite(const std::string& value) {
     setStatus(Status::WIFI_CONNECTING);
     closeWebSocket();
     WiFi.disconnect(true);
-    connectWifi();
+    wifiConnectRequested = true;
 }
 
 void QcControlClient::publishProvisioningStatus(const char* status) {
@@ -125,11 +167,13 @@ void QcControlClient::publishProvisioningStatus(const char* status) {
 
 void QcControlClient::handleWifiEvent(arduino_event_id_t event, arduino_event_info_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+        wifiHasIp = false;
         lastWifiDisconnectReason = info.wifi_sta_disconnected.reason;
         if (config.magic == CONFIG_MAGIC && status == Status::WIFI_CONNECTING) {
             setStatus(statusForWifiFailure(WiFi.status()));
         }
     } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+        wifiHasIp = true;
         lastWifiDisconnectReason = 0;
     }
 }
@@ -192,6 +236,9 @@ void QcControlClient::writeStatusLed(bool on) {
         case Status::CONNECTED:
             lamp->setQcStatusLed(false, true, false);
             break;
+        case Status::CREDENTIALS_CLEARED:
+            lamp->setQcStatusLed(false, false, true);
+            break;
         case Status::INVALID_CONFIG:
             lamp->setQcStatusLed(true, false, false);
             break;
@@ -243,6 +290,8 @@ const char* QcControlClient::statusName(Status value) const {
             return "ws_failed";
         case Status::CONNECTED:
             return "connected";
+        case Status::CREDENTIALS_CLEARED:
+            return "credentials_cleared";
         case Status::INVALID_CONFIG:
             return "invalid_config";
     }
@@ -273,6 +322,8 @@ const char* QcControlClient::statusDescription(Status value) const {
             return "Controller WebSocket connection failed";
         case Status::CONNECTED:
             return "Connected to controller";
+        case Status::CREDENTIALS_CLEARED:
+            return "Stored QC credentials were cleared";
         case Status::INVALID_CONFIG:
             return "Provisioning payload was invalid";
     }
@@ -283,6 +334,8 @@ unsigned long QcControlClient::statusBlinkInterval(Status value) const {
     switch (value) {
         case Status::CONNECTED:
             return 0;
+        case Status::CREDENTIALS_CLEARED:
+            return 500;
         case Status::INVALID_CONFIG:
             return 150;
         case Status::WIFI_CONNECTING:
@@ -319,6 +372,12 @@ void QcControlClient::saveConfig() {
     EEPROM.commit();
 }
 
+void QcControlClient::clearConfig() {
+    memset(&config, 0, sizeof(config));
+    EEPROM.put(CONFIG_OFFSET, config);
+    EEPROM.commit();
+}
+
 bool QcControlClient::parseProvisioningJson(const String& json) {
     const String ssid = readStringValue(json, "ssid");
     const String password = readStringValue(json, "password");
@@ -348,9 +407,25 @@ void QcControlClient::connectWifi() {
         return;
     }
 
+    wifiConnectRequested = false;
+    wifiHasIp = false;
+    stopBleProvisioning();
+    delay(1000);
     lastWifiAttempt = millis();
     setStatus(Status::WIFI_CONNECTING);
+    WiFi.disconnect(true, true);
+    delay(300);
+    WiFi.mode(WIFI_OFF);
+    delay(300);
     WiFi.mode(WIFI_STA);
+    delay(100);
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(false);
+    WiFi.setSleep(false);
+    WiFi.setMinSecurity(WIFI_AUTH_OPEN);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
     WiFi.begin(config.ssid, config.password);
 }
 
